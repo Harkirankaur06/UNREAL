@@ -3,139 +3,174 @@ import numpy as np
 import tkinter as tk
 from tkinter import ttk
 from PIL import Image, ImageTk
-import threading
+import time
 
-class UnrealLevitationApp:
+class UnrealStudioApp:
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)
-        self.window.configure(bg="#121212") # Premium dark mode background
+        self.window.configure(bg="#0C0C0E") 
         
         self.cap = cv2.VideoCapture(0)
         
-        # State Variables
+        # Core State Variables
         self.tracker = None
         self.is_tracking = False
         self.is_levitating = False
         self.bbox = None
         self.float_y = 0
-        self.target_hover_height = -90 # Hover offset in pixels
+        self.target_hover_height = -90 
         
-        # --- UI LAYOUT CONFIGURATION ---
-        # Top Header
-        self.header = tk.Label(window, text="UNREAL // COGNITIVE ELEVATION SYSTEM", 
-                               fg="#00E5FF", bg="#121212", font=("Courier", 14, "bold"))
+        # Precise Mask Cutout Data Cache
+        self.mask_crop = None
+        self.object_crop = None
+        self.full_frame_mask = None
+
+        # --- UI VIEWPORT LAYOUT ---
+        self.header = tk.Label(window, text="UNREAL // SILHOUETTE INVERSION ENGINE", 
+                               fg="#00E5FF", bg="#0C0C0E", font=("Courier", 14, "bold"))
         self.header.pack(pady=10)
         
-        # Main Video Canvas Stream
-        self.canvas = tk.Canvas(window, width=640, height=480, bg="#1a1a1a", highlightthickness=0)
+        self.canvas = tk.Canvas(window, width=640, height=480, bg="#111115", highlightthickness=0)
         self.canvas.pack(pady=5)
         
-        # Button Dashboard Frame
-        self.btn_frame = tk.Frame(window, bg="#121212")
+        self.btn_frame = tk.Frame(window, bg="#0C0C0E")
         self.btn_frame.pack(pady=15)
         
-        # Styled Dark-Mode Buttons
         style = ttk.Style()
         style.theme_use('default')
-        style.configure('TButton', font=('Helvetica', 10, 'bold'), foreground='#ffffff', background='#333333', borderwidth=0)
-        style.map('TButton', background=[('active', '#00E5FF')], foreground=[('active', '#121212')])
+        style.configure('TButton', font=('Helvetica', 10, 'bold'), foreground='#ffffff', background='#1E1E24', borderwidth=0)
+        style.map('TButton', background=[('active', '#00E5FF')], foreground=[('active', '#0C0C0E')])
         
-        self.btn_select = ttk.Button(self.btn_frame, text="1. SELECT OBJECT", command=self.start_roi_selection)
-        self.btn_select.grid(row=0, column=0, padx=10)
+        self.btn_select = ttk.Button(self.btn_frame, text="1. SELECT OBJECT", command=self.process_silhouette)
+        self.btn_select.grid(row=0, column=0, padx=12)
         
-        self.btn_hover = ttk.Button(self.btn_frame, text="2. TRIGGER HOVER", command=self.toggle_hover)
-        self.btn_hover.grid(row=0, column=1, padx=10)
+        self.btn_hover = ttk.Button(self.btn_frame, text="2. LAUNCH HOVER", command=self.activate_hover)
+        self.btn_hover.grid(row=0, column=1, padx=12)
         
-        self.btn_reset = ttk.Button(self.btn_frame, text="RESET MATRIX", command=self.reset_system)
-        self.btn_reset.grid(row=0, column=2, padx=10)
+        self.btn_reset = ttk.Button(self.btn_frame, text="RESET SYSTEM", command=self.reset_workspace)
+        self.btn_reset.grid(row=0, column=2, padx=12)
         
-        # Status Bar Footer
         self.status_var = tk.StringVar()
-        self.status_var.set("SYSTEM STATUS: LIVE_VIEWPORT_READY")
-        self.status_label = tk.Label(window, textvariable=self.status_var, fg="#ffffff", bg="#1a1a1a", font=("Helvetica", 9), width=80, anchor="w", padx=10)
+        self.status_var.set("CONSOLE // PORTAL STREAM STABLE. CHOOSE AN ACTION.")
+        self.status_label = tk.Label(window, textvariable=self.status_var, fg="#A0A0AA", bg="#111115", font=("Courier", 9), width=85, anchor="w", padx=12, pady=4)
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
         
-        # Start the Background Camera Thread Processing loop
         self.delay = 15
-        self.update_frame()
+        self.update_stream()
         self.window.mainloop()
 
-    def start_roi_selection(self):
-        """Launches a live selection framework anywhere on screen"""
-        self.status_var.set("SYSTEM STATUS: DRAW BOX AROUND THE TARGET OBJECT IN THE POPUP WINDOW")
+    def process_silhouette(self):
+        """Captures frame live, lets user select, and runs GrabCut boundary isolation"""
+        self.status_var.set("CONSOLE // DRAW BOX BOUNDARY AROUND TARGET ON THE LIVE FRAME POPUP")
         
-        # Read current live frame to select target
         ret, frame = self.cap.read()
         if ret:
             frame = cv2.flip(frame, 1)
-            # OpenCV selectROI allows mouse drag selection anywhere on the screen layout
-            roi_bbox = cv2.selectROI("TARGET CORE LOCK-ON", frame, fromCenter=False, showCrosshair=False)
-            cv2.destroyWindow("TARGET CORE LOCK-ON")
+            roi_bbox = cv2.selectROI("UNREAL // TARGET CAPTURE", frame, fromCenter=False, showCrosshair=False)
+            cv2.destroyWindow("UNREAL // TARGET CAPTURE")
             
-            if roi_bbox[2] > 10 and roi_bbox[3] > 10:
-                self.bbox = roi_bbox
+            ox, oy, ow, oh = [int(v) for v in roi_bbox]
+            
+            if ow > 15 and oh > 15:
+                self.bbox = (ox, oy, ow, oh)
+                
+                bgdModel = np.zeros((1, 65), np.float64)
+                fgdModel = np.zeros((1, 65), np.float64)
+                gc_mask = np.zeros(frame.shape[:2], np.uint8)
+                
+                cv2.grabCut(frame, gc_mask, self.bbox, bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_RECT)
+                
+                self.full_frame_mask = np.where((gc_mask == 2) | (gc_mask == 0), 0, 1).astype('uint8') * 255
+                self.full_frame_mask = cv2.morphologyEx(self.full_frame_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
+                
+                isolated_texture = cv2.bitwise_and(frame, frame, mask=self.full_frame_mask)
+                self.object_crop = isolated_texture[oy:oy+oh, ox:ox+ow]
+                self.mask_crop = self.full_frame_mask[oy:oy+oh, ox:ox+ow]
+                
                 self.tracker = cv2.TrackerCSRT_create()
                 self.tracker.init(frame, self.bbox)
                 self.is_tracking = True
-                self.status_var.set("SYSTEM STATUS: OBJECT LOCKED & TRACKING LIVE // PRESS TRIGGER HOVER")
+                self.status_var.set("CONSOLE // OBJECT BOUNDARIES MAP GENERATED SUCCESSFULLY. READY FOR HOVER.")
 
-    def toggle_hover(self):
-        """Toggles the dynamic altitude tracking engine"""
+    def activate_hover(self):
         if self.is_tracking:
             self.is_levitating = True
-            self.status_var.set("SYSTEM STATUS: ALTERNATE MATERIALIZATION LAYER ACTIVE")
+            self.status_var.set("CONSOLE // MATRIX SPLIT COMPLETE. DYNAMIC INPAINT MODIFIER ENGAGED.")
 
-    def reset_system(self):
-        """Clears all matrix structures back to baseline preview"""
+    def reset_workspace(self):
         self.tracker = None
         self.is_tracking = False
         self.is_levitating = False
         self.bbox = None
         self.float_y = 0
-        self.status_var.set("SYSTEM STATUS: RESET COMPLETED // LIVE_VIEWPORT_READY")
+        self.mask_crop = None
+        self.object_crop = None
+        self.full_frame_mask = None
+        self.status_var.set("CONSOLE // WORKSPACE TERMINATED. SYSTEM RELOAD COMPLETED.")
 
-    def update_frame(self):
-        """Main rendering engine processing pipeline"""
+    def update_stream(self):
         ret, frame = self.cap.read()
         if ret:
             frame = cv2.flip(frame, 1)
             h, w, c = frame.shape
             display_frame = frame.copy()
             
-            # 1. AI RECOGNITION ENGINE TRACKING ACTIVE
+            # --- HUD VIEWPORT OVERLAYS ---
+            bl = 20
+            cv2.line(display_frame, (30, 30), (30 + bl, 30), (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.line(display_frame, (30, 30), (30, 30 + bl), (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.line(display_frame, (w - 30, 30), (w - 30 - bl, 30), (255, 255, 255), 1, cv2.LINE_AA)
+            cv2.line(display_frame, (w - 30, 30), (w - 30, 30 + bl), (255, 255, 255), 1, cv2.LINE_AA)
+            
+            if int(time.time() * 2) % 2 == 0:
+                cv2.circle(display_frame, (45, 52), 5, (0, 0, 255), -1, cv2.LINE_AA)
+            cv2.putText(display_frame, "LIVE_VIEWFEED", (60, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+
+            # --- ENGINE PROCESSING CORE ---
             if self.is_tracking and self.tracker is not None:
                 track_success, box = self.tracker.update(frame)
                 
                 if track_success:
                     ox, oy, ow, oh = [int(v) for v in box]
                     
-                    # RENDER THE REAL OBJECT: Keep drawing the cyber frame on the real moving item
-                    cv2.rectangle(display_frame, (ox, oy), (ox+ow, oy+oh), (0, 255, 255), 1, cv2.LINE_AA)
-                    cv2.drawMarker(display_frame, (ox + int(ow/2), oy + int(oh/2)), (0, 255, 255), cv2.MARKER_CROSS, 8, 1, cv2.LINE_AA)
-                    
-                    # 2. HOVER GENERATOR ACTIVATED
-                    if self.is_levitating:
-                        # Smooth hover interpolation calculation
-                        if self.float_y > self.target_hover_height:
-                            self.float_y -= 4
+                    # Prevent zero-size layout tracking crashes
+                    if ow > 5 and oh > 5 and ox >= 0 and oy >= 0 and (ox + ow) <= w and (oy + oh) <= h:
                         
-                        # Calculate exact dynamic floating offset relative to the object's real-time position
-                        current_y = oy + self.float_y
+                        # CRITICAL FIX: Dynamically match template arrays to the exact live window tracking bounds
+                        live_mask_crop = cv2.resize(self.mask_crop, (ow, oh))
+                        live_object_crop = cv2.resize(self.object_crop, (ow, oh))
                         
-                        if current_y > 10 and (current_y + oh) < h:
-                            # Safely slice and isolate the texture of the live object
-                            object_texture = frame[oy:oy+oh, ox:ox+ow].copy()
+                        if self.is_levitating:
+                            # 1. Real-time background pixel-repair mask
+                            active_mask = np.zeros(frame.shape[:2], np.uint8)
+                            active_mask[oy:oy+oh, ox:ox+ow] = live_mask_crop
                             
-                            # Render the replica tracking floating perfectly a few inches above the real moving object!
-                            display_frame[current_y:current_y+oh, ox:ox+ow] = object_texture
+                            display_frame = cv2.inpaint(frame, active_mask, 5, cv2.INPAINT_TELEA)
                             
-                            # Minimal cyan stasis stabilization accent bar under the floating artifact
-                            cv2.line(display_frame, (ox, current_y + oh + 4), (ox + ow, current_y + oh + 4), (0, 255, 255), 2, cv2.LINE_AA)
+                            # 2. Translate Floating Layer Coordinates
+                            if self.float_y > self.target_hover_height:
+                                self.float_y -= 4
+                                
+                            current_y = oy + self.float_y
+                            
+                            # Ensure the float layer fits safely inside screen limits
+                            if current_y > 5 and (current_y + oh) < h:
+                                roi = display_frame[current_y:current_y+oh, ox:ox+ow]
+                                
+                                # Perform operations on matching dimensions safely
+                                img_bg = cv2.bitwise_and(roi, roi, mask=cv2.bitwise_not(live_mask_crop))
+                                img_fg = cv2.bitwise_and(live_object_crop, live_object_crop, mask=live_mask_crop)
+                                
+                                display_frame[current_y:current_y+oh, ox:ox+ow] = cv2.add(img_bg, img_fg)
+                                cv2.line(display_frame, (ox, current_y + oh + 4), (ox + ow, current_y + oh + 4), (0, 229, 255), 2, cv2.LINE_AA)
+                        else:
+                            # Pre-hover mode: Render clean green tracking contours onto the screen layout
+                            cv2.rectangle(display_frame, (ox, oy), (ox+ow, oy+oh), (0, 255, 0), 1, cv2.LINE_AA)
                 else:
-                    self.status_var.set("SYSTEM STATUS: TRACKING LOST // PLEASE RESET")
+                    self.status_var.set("CONSOLE // TRACKING GEOMETRY DETACHED. PRESS RESET WORKSPACE.")
 
-            # Convert OpenCV BGR Image frame to Tkinter Compatible Canvas Layer
+            # Map array details directly over the Tkinter canvas setup
             img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
             img_tk = ImageTk.PhotoImage(image=img)
@@ -143,12 +178,11 @@ class UnrealLevitationApp:
             self.canvas.img_tk = img_tk
             self.canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
             
-        self.window.after(self.delay, self.update_frame)
+        self.window.after(self.delay, self.update_stream)
 
     def __del__(self):
         if self.cap.isOpened():
             self.cap.release()
 
-# Launch the Application Sandbox
 if __name__ == "__main__":
-    UnrealLevitationApp(tk.Tk(), "UNREAL Engine - Day 1 Studio Workspace")
+    UnrealStudioApp(tk.Tk(), "UNREAL Engine Studio Workspace v2.0")
