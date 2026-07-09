@@ -1,125 +1,154 @@
 import cv2
 import numpy as np
-import time
+import tkinter as tk
+from tkinter import ttk
+from PIL import Image, ImageTk
+import threading
 
-# Open Webcam Feed
-cap = cv2.VideoCapture(0)
-
-# State Management
-is_calibrated = False
-is_levitating = False
-
-# Layout and Sizing Configuration
-box_w, box_h = 160, 160
-float_y = 0
-target_hover_height = -80  # Keeps it locked a few real inches above your hand/head
-
-print("🔮 UNREAL // LIVE VIEWFINDER PORTAL")
-print("1. Get comfortable in front of the camera.")
-print("2. Position the object inside the center targeting zone.")
-print("3. Press [SPACE] ONLY when you are completely ready to isolate it.")
-
-while cap.isOpened():
-    success, frame = cap.read()
-    if not success:
-        break
+class UnrealLevitationApp:
+    def __init__(self, window, window_title):
+        self.window = window
+        self.window.title(window_title)
+        self.window.configure(bg="#121212") # Premium dark mode background
         
-    frame = cv2.flip(frame, 1)
-    h, w, c = frame.shape
-    display_frame = frame.copy()
-    key = cv2.waitKey(1) & 0xFF
-
-    # --- DESIGNER CAMERA VIEWPORT HUD OVERLAY ---
-    bracket_len = 25
-    # Top-Left
-    cv2.line(display_frame, (40, 40), (40 + bracket_len, 40), (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.line(display_frame, (40, 40), (40, 40 + bracket_len), (255, 255, 255), 2, cv2.LINE_AA)
-    # Top-Right
-    cv2.line(display_frame, (w - 40, 40), (w - 40 - bracket_len, 40), (255, 255, 255), 2, cv2.LINE_AA)
-    cv2.line(display_frame, (w - 40, 40), (w - 40, 40 + bracket_len), (255, 255, 255), 2, cv2.LINE_AA)
-    
-    # Blinking Recording Light
-    if int(time.time() * 2) % 2 == 0:
-        cv2.circle(display_frame, (55, 65), 6, (0, 0, 255), -1, cv2.LINE_AA)
-    cv2.putText(display_frame, "REC  UNREAL_CAM_01", (75, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-
-    # Dynamic Center Alignment Target coordinates
-    cx, cy = int(w / 2), int(h / 2)
-    box_x, box_y = cx - int(box_w / 2), cy - int(box_h / 2)
-
-    # --- PHASE 1: COMPLETELY LIVE PREVIEW & ALIGNMENT ---
-    if not is_calibrated:
-        # Subtle targeting bracket to help you line up your object comfortably
-        cv2.rectangle(display_frame, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(display_frame, "ALIGN TARGET HERE & PRESS [SPACE]", (box_x - 30, box_y - 15), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
+        self.cap = cv2.VideoCapture(0)
         
-        # User explicitly triggers when they are completely ready
-        if key == ord(' '):
-            print("\n📸 POSITION CAPTURED. Use your mouse on the popup window to cut out the object.")
-            # Launch the manual selection tool on the exact frozen frame the user chose!
-            bbox = cv2.selectROI("TARGET BOUNDARY ISOLATION", frame, fromCenter=False, showCrosshair=False)
-            cv2.destroyWindow("TARGET BOUNDARY ISOLATION")
+        # State Variables
+        self.tracker = None
+        self.is_tracking = False
+        self.is_levitating = False
+        self.bbox = None
+        self.float_y = 0
+        self.target_hover_height = -90 # Hover offset in pixels
+        
+        # --- UI LAYOUT CONFIGURATION ---
+        # Top Header
+        self.header = tk.Label(window, text="UNREAL // COGNITIVE ELEVATION SYSTEM", 
+                               fg="#00E5FF", bg="#121212", font=("Courier", 14, "bold"))
+        self.header.pack(pady=10)
+        
+        # Main Video Canvas Stream
+        self.canvas = tk.Canvas(window, width=640, height=480, bg="#1a1a1a", highlightthickness=0)
+        self.canvas.pack(pady=5)
+        
+        # Button Dashboard Frame
+        self.btn_frame = tk.Frame(window, bg="#121212")
+        self.btn_frame.pack(pady=15)
+        
+        # Styled Dark-Mode Buttons
+        style = ttk.Style()
+        style.theme_use('default')
+        style.configure('TButton', font=('Helvetica', 10, 'bold'), foreground='#ffffff', background='#333333', borderwidth=0)
+        style.map('TButton', background=[('active', '#00E5FF')], foreground=[('active', '#121212')])
+        
+        self.btn_select = ttk.Button(self.btn_frame, text="1. SELECT OBJECT", command=self.start_roi_selection)
+        self.btn_select.grid(row=0, column=0, padx=10)
+        
+        self.btn_hover = ttk.Button(self.btn_frame, text="2. TRIGGER HOVER", command=self.toggle_hover)
+        self.btn_hover.grid(row=0, column=1, padx=10)
+        
+        self.btn_reset = ttk.Button(self.btn_frame, text="RESET MATRIX", command=self.reset_system)
+        self.btn_reset.grid(row=0, column=2, padx=10)
+        
+        # Status Bar Footer
+        self.status_var = tk.StringVar()
+        self.status_var.set("SYSTEM STATUS: LIVE_VIEWPORT_READY")
+        self.status_label = tk.Label(window, textvariable=self.status_var, fg="#ffffff", bg="#1a1a1a", font=("Helvetica", 9), width=80, anchor="w", padx=10)
+        self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
+        
+        # Start the Background Camera Thread Processing loop
+        self.delay = 15
+        self.update_frame()
+        self.window.mainloop()
+
+    def start_roi_selection(self):
+        """Launches a live selection framework anywhere on screen"""
+        self.status_var.set("SYSTEM STATUS: DRAW BOX AROUND THE TARGET OBJECT IN THE POPUP WINDOW")
+        
+        # Read current live frame to select target
+        ret, frame = self.cap.read()
+        if ret:
+            frame = cv2.flip(frame, 1)
+            # OpenCV selectROI allows mouse drag selection anywhere on the screen layout
+            roi_bbox = cv2.selectROI("TARGET CORE LOCK-ON", frame, fromCenter=False, showCrosshair=False)
+            cv2.destroyWindow("TARGET CORE LOCK-ON")
             
-            ox, oy, ow, oh = [int(v) for v in bbox]
+            if roi_bbox[2] > 10 and roi_bbox[3] > 10:
+                self.bbox = roi_bbox
+                self.tracker = cv2.TrackerCSRT_create()
+                self.tracker.init(frame, self.bbox)
+                self.is_tracking = True
+                self.status_var.set("SYSTEM STATUS: OBJECT LOCKED & TRACKING LIVE // PRESS TRIGGER HOVER")
+
+    def toggle_hover(self):
+        """Toggles the dynamic altitude tracking engine"""
+        if self.is_tracking:
+            self.is_levitating = True
+            self.status_var.set("SYSTEM STATUS: ALTERNATE MATERIALIZATION LAYER ACTIVE")
+
+    def reset_system(self):
+        """Clears all matrix structures back to baseline preview"""
+        self.tracker = None
+        self.is_tracking = False
+        self.is_levitating = False
+        self.bbox = None
+        self.float_y = 0
+        self.status_var.set("SYSTEM STATUS: RESET COMPLETED // LIVE_VIEWPORT_READY")
+
+    def update_frame(self):
+        """Main rendering engine processing pipeline"""
+        ret, frame = self.cap.read()
+        if ret:
+            frame = cv2.flip(frame, 1)
+            h, w, c = frame.shape
+            display_frame = frame.copy()
             
-            # Prevent empty selections from crashing the matrix
-            if ow > 10 and oh > 10:
-                # Execute instant high-precision silhouette extraction
-                bgdModel = np.zeros((1, 65), np.float64)
-                fgdModel = np.zeros((1, 65), np.float64)
-                mask = np.zeros(frame.shape[:2], np.uint8)
+            # 1. AI RECOGNITION ENGINE TRACKING ACTIVE
+            if self.is_tracking and self.tracker is not None:
+                track_success, box = self.tracker.update(frame)
                 
-                cv2.grabCut(frame, mask, (ox, oy, ow, oh), bgdModel, fgdModel, 5, cv2.GC_INIT_WITH_RECT)
-                precise_mask = np.where((mask == 2) | (mask == 0), 0, 1).astype('uint8') * 255
-                precise_mask = cv2.morphologyEx(precise_mask, cv2.MORPH_CLOSE, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5)))
-                
-                # Cache the exact silhouette profile
-                isolated_texture = cv2.bitwise_and(frame, frame, mask=precise_mask)
-                object_crop = isolated_texture[oy:oy+oh, ox:ox+ow]
-                mask_crop = precise_mask[oy:oy+oh, ox:ox+ow]
-                
-                is_calibrated = True
-                is_levitating = True  # Instantly start floating up once selected!
-                float_y = 0
+                if track_success:
+                    ox, oy, ow, oh = [int(v) for v in box]
+                    
+                    # RENDER THE REAL OBJECT: Keep drawing the cyber frame on the real moving item
+                    cv2.rectangle(display_frame, (ox, oy), (ox+ow, oy+oh), (0, 255, 255), 1, cv2.LINE_AA)
+                    cv2.drawMarker(display_frame, (ox + int(ow/2), oy + int(oh/2)), (0, 255, 255), cv2.MARKER_CROSS, 8, 1, cv2.LINE_AA)
+                    
+                    # 2. HOVER GENERATOR ACTIVATED
+                    if self.is_levitating:
+                        # Smooth hover interpolation calculation
+                        if self.float_y > self.target_hover_height:
+                            self.float_y -= 4
+                        
+                        # Calculate exact dynamic floating offset relative to the object's real-time position
+                        current_y = oy + self.float_y
+                        
+                        if current_y > 10 and (current_y + oh) < h:
+                            # Safely slice and isolate the texture of the live object
+                            object_texture = frame[oy:oy+oh, ox:ox+ow].copy()
+                            
+                            # Render the replica tracking floating perfectly a few inches above the real moving object!
+                            display_frame[current_y:current_y+oh, ox:ox+ow] = object_texture
+                            
+                            # Minimal cyan stasis stabilization accent bar under the floating artifact
+                            cv2.line(display_frame, (ox, current_y + oh + 4), (ox + ow, current_y + oh + 4), (0, 255, 255), 2, cv2.LINE_AA)
+                else:
+                    self.status_var.set("SYSTEM STATUS: TRACKING LOST // PLEASE RESET")
 
-    # --- PHASE 2: FLAWLESS LIVE LEVITATION & BACKGROUND RENDERING ---
-    else:
-        if is_levitating:
-            # Smoothly climb until hitting the exact hover altitude anchor point
-            if float_y > target_hover_height:
-                float_y -= 4  
-                
-            # 1. Live Background Patching: Instant real-time inpaint healing
-            live_inpainted_bg = cv2.inpaint(frame, precise_mask, 5, cv2.INPAINT_TELEA)
-            display_frame = live_inpainted_bg
+            # Convert OpenCV BGR Image frame to Tkinter Compatible Canvas Layer
+            img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
+            img = Image.fromarray(img)
+            img_tk = ImageTk.PhotoImage(image=img)
             
-            # 2. Render Precise Silhouette float layer over the live video matrix
-            current_y = oy + float_y
-            if current_y > 10 and (current_y + oh) < h:
-                roi = display_frame[current_y:current_y+oh, ox:ox+ow]
-                img_bg = cv2.bitwise_and(roi, roi, mask=cv2.bitwise_not(mask_crop))
-                img_fg = cv2.bitwise_and(object_crop, object_crop, mask=mask_crop)
-                
-                display_frame[current_y:current_y+oh, ox:ox+ow] = cv2.add(img_bg, img_fg)
-                
-                # Cyber stability HUD tag
-                cv2.putText(display_frame, "ALT_LOCKED // SHIELD_ACTIVE", (ox, current_y + oh + 15), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1, cv2.LINE_AA)
+            self.canvas.img_tk = img_tk
+            self.canvas.create_image(0, 0, anchor=tk.NW, image=img_tk)
+            
+        self.window.after(self.delay, self.update_frame)
 
-        # Reset button configuration
-        if key == ord('r') or key == ord('R'):
-            is_calibrated = False
-            is_levitating = False
-            float_y = 0
+    def __del__(self):
+        if self.cap.isOpened():
+            self.cap.release()
 
-    # General System Logging UI
-    cv2.putText(display_frame, f"CORE: {'ELEVATION_SUSPENDED' if is_levitating else 'LIVE_CALIBRATION_PENDING'}", 
-                (w - 320, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-
-    cv2.imshow("UNREAL - Day 1", display_frame)
-    if key == ord('q') or key == ord('Q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+# Launch the Application Sandbox
+if __name__ == "__main__":
+    UnrealLevitationApp(tk.Tk(), "UNREAL Engine - Day 1 Studio Workspace")
