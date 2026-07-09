@@ -13,8 +13,8 @@ class UnrealEngineStudio:
         
         self.cap = cv2.VideoCapture(0)
         
-        # 1. Initialize Adaptive Background Model (Shadow-aware)
-        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=True)
+        # Initialize Adaptive Background Model
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=False)
         
         # Core State Machine
         self.is_calibrated = False
@@ -25,9 +25,10 @@ class UnrealEngineStudio:
         self.object_mask = None
         self.object_texture = None
         self.saved_coords = None
+        self.locked_clean_bg = None # Caches the sharp background pixels
 
         # --- UI VIEWPORT LAYOUT ---
-        self.header = tk.Label(window, text="UNREAL // LIVE BACKGROUND SEGMENTATION STUDIO", 
+        self.header = tk.Label(window, text="UNREAL // LIVE SEGMENTATION STUDIO v4.0", 
                                fg="#00E5FF", bg="#0B0B0C", font=("Courier", 12, "bold"))
         self.header.pack(pady=10)
         
@@ -52,7 +53,7 @@ class UnrealEngineStudio:
         self.btn_reset.grid(row=0, column=2, padx=12)
         
         self.status_var = tk.StringVar()
-        self.status_var.set("CONSOLE // STEP OUT OF FRAME OR KEEP IT CLEAR TO TRAIN BACKGROUND MODULE LIVE...")
+        self.status_var.set("CONSOLE // STEP OUT OF FRAME TO TRAIN BACKGROUND MODULE LIVE...")
         self.status_label = tk.Label(window, textvariable=self.status_var, fg="#8A8A93", bg="#101012", font=("Courier", 9), width=85, anchor="w", padx=12, pady=4)
         self.status_label.pack(side=tk.BOTTOM, fill=tk.X)
         
@@ -61,14 +62,20 @@ class UnrealEngineStudio:
         self.window.mainloop()
 
     def lock_background(self):
-        """Freezes the probabilistic background model map"""
+        """Captures a sharp template of the clean background room"""
+        self.locked_clean_bg = self.bg_subtractor.getBackgroundImage()
+        if self.locked_clean_bg is None:
+            # Fallback if model isn't completely saturated yet
+            _, frame = self.cap.read()
+            self.locked_clean_bg = cv2.flip(frame, 1)
+            
         self.is_calibrated = True
-        self.status_var.set("CONSOLE // BACKGROUND SEGMENTATION STABLE. PLACE OBJECT & CLICK HOVER.")
+        self.status_var.set("CONSOLE // SHARP BACKGROUND REPLICATED. PLACE OBJECT & CLICK HOVER.")
 
     def trigger_hover(self):
         if self.is_calibrated and self.object_mask is not None:
             self.is_levitating = True
-            self.status_var.set("CONSOLE // OVERRIDE INVERSIONS STREAMING LIVE.")
+            self.status_var.set("CONSOLE // LEVITATION SEQUENCE ACTIVE. ZERO BLUR MATRIX APPLIED.")
 
     def reset_system(self):
         self.is_calibrated = False
@@ -77,7 +84,8 @@ class UnrealEngineStudio:
         self.object_mask = None
         self.object_texture = None
         self.saved_coords = None
-        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=True)
+        self.locked_clean_bg = None
+        self.bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=300, varThreshold=25, detectShadows=False)
         self.status_var.set("CONSOLE // RESET COMPLETE. RE-TRAINING BACKGROUND...")
 
     def update_workspace(self):
@@ -87,23 +95,18 @@ class UnrealEngineStudio:
             h, w, c = frame.shape
             display_frame = frame.copy()
             
-            # 1. Update background subtraction model loop
             if not self.is_calibrated:
-                # The model is constantly learning the empty room layout here
                 fg_mask = self.bg_subtractor.apply(frame)
             else:
-                # When locked, evaluate frame changes without training the background further
                 fg_mask = self.bg_subtractor.apply(frame, learningRate=0)
                 
-                # Filter out human skin tones/shadows from the object mask layout
+                # Dynamic Skin Isolation
                 ycrcb = cv2.cvtColor(frame, cv2.COLOR_BGR2YCrCb)
                 skin_mask = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 173, 127]))
                 
-                # Object mask = movement difference minus skin mask - filters shadows (gray code 127)
                 _, clean_fg = cv2.threshold(fg_mask, 200, 255, cv2.THRESH_BINARY) 
                 only_object = cv2.bitwise_and(clean_fg, cv2.bitwise_not(skin_mask))
                 
-                # Cleanup edge dilation errors
                 kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
                 only_object = cv2.morphologyEx(only_object, cv2.MORPH_CLOSE, kernel, iterations=2)
                 
@@ -115,29 +118,29 @@ class UnrealEngineStudio:
                         ox, oy, ow, oh = cv2.boundingRect(largest_contour)
                         self.saved_coords = (ox, oy, ow, oh)
                         
-                        # Cache the targeted object data structure
                         self.object_mask = np.zeros_like(only_object)
                         cv2.drawContours(self.object_mask, [largest_contour], -1, 255, -1)
                         self.object_texture = frame.copy()
 
-            # --- 2. RENDER HOVER AND RENDER BACKGROUND ---
+            # --- RENDER HOVER ENGINE ---
             if self.is_levitating and self.saved_coords is not None:
                 ox, oy, ow, oh = self.saved_coords
                 
-                # A. Render background underneath using the live running background frame model
-                live_bg = self.bg_subtractor.getBackgroundImage()
-                if live_bg is None: live_bg = frame.copy()
+                # FIX 1: RECONSTRUCT BACKGROUND IN PLACE OF THE OBJECT WITH CRISP PIXELS
+                # Instead of blurring, we paste the pristine clean room texture directly over the shape
+                inv_object_mask = cv2.bitwise_not(self.object_mask)
+                live_bg_restored = cv2.bitwise_and(frame, frame, mask=inv_object_mask)
+                static_clean_patch = cv2.bitwise_and(self.locked_clean_bg, self.locked_clean_bg, mask=self.object_mask)
                 
-                # Inpaint patch the exact contour area on the live camera loop
-                display_frame = cv2.inpaint(frame, self.object_mask, 7, cv2.INPAINT_TELEA)
+                # Combine them—the object is now perfectly replaced by the true background with 0% blur
+                display_frame = cv2.add(live_bg_restored, static_clean_patch)
                 
-                # B. Hover physics step
+                # Hover Calculation
                 if self.float_y > self.target_hover_height:
                     self.float_y -= 4
                 current_y = oy + self.float_y
                 
                 if current_y > 10 and (current_y + oh) < h:
-                    # Isolate object segment matrices
                     mask_crop = self.object_mask[oy:oy+oh, ox:ox+ow]
                     texture_crop = self.object_texture[oy:oy+oh, ox:ox+ow]
                     
@@ -146,26 +149,21 @@ class UnrealEngineStudio:
                     img_bg = cv2.bitwise_and(roi, roi, mask=cv2.bitwise_not(mask_crop))
                     img_fg = cv2.bitwise_and(texture_crop, texture_crop, mask=mask_crop)
                     
+                    # Merge the clean floating object over the scene
                     display_frame[current_y:current_y+oh, ox:ox+ow] = cv2.add(img_bg, img_fg)
-                    cv2.line(display_frame, (ox, current_y + oh + 4), (ox + ow, current_y + oh + 4), (0, 229, 255), 2, cv2.LINE_AA)
+                    
+                    # FIX 2: Yellow line is completely removed from here! No line artifacts.
             
             elif self.is_calibrated and self.saved_coords is not None and not self.is_levitating:
-                # Show targeting preview line boundaries
                 cx, cy, cw, ch = self.saved_coords
                 cv2.rectangle(display_frame, (cx, cy), (cx+cw, cy+ch), (0, 255, 0), 1, cv2.LINE_AA)
 
-            # Technical corner brackets HUD
-            bl = 20
-            cv2.line(display_frame, (30, 30), (30 + bl, 30), (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.line(display_frame, (30, 30), (30, 30 + bl), (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.line(display_frame, (w - 30, 30), (w - 30 - bl, 30), (255, 255, 255), 1, cv2.LINE_AA)
-            cv2.line(display_frame, (w - 30, 30), (w - 30, 30 + bl), (255, 255, 255), 1, cv2.LINE_AA)
-            
+            # Minimalist Recording HUD
             if int(time.time() * 2) % 2 == 0:
                 cv2.circle(display_frame, (45, 52), 5, (0, 0, 255), -1, cv2.LINE_AA)
             cv2.putText(display_frame, "UNREAL_STUDIO_LIVE", (60, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
-            # Update Canvas frame
+            # Update Canvas Frame
             img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
             img_tk = ImageTk.PhotoImage(image=img)
@@ -179,4 +177,4 @@ class UnrealEngineStudio:
             self.cap.release()
 
 if __name__ == "__main__":
-    UnrealEngineStudio(tk.Tk(), "UNREAL Studio Workspace v3.0")
+    UnrealEngineStudio(tk.Tk(), "UNREAL Studio Workspace v4.0")
