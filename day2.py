@@ -3,137 +3,125 @@ import numpy as np
 import random
 import time
 
-# --- CONFIGURATION ---
-# Define the coordinates [ymin, ymax, xmin, xmax] of the background object you want to float.
-# Adjust these numbers based on where your object sits in your webcam frame!
-OBJ_ROI = [200, 350, 150, 300] 
-# ---------------------
-
 cap = cv2.VideoCapture(0)
 
-# Give the webcam a moment to warm up and capture a clean background
+# Allow camera to adjust and capture a clean background for patching
 time.sleep(1)
-ret, background_template = cap.read()
+ret, background_cache = cap.read()
 
-# States: 0 = Normal, 1 = Breach (Glitches + Floating), 2 = Snap Drop
+# State Management: 0 = Setup, 1 = Float/Distort, 2 = Gravitational Drop
 state = 0  
-
-# Physics variables
 y_offset = 0.0
-float_speed = 0.8       # Slow upward drift
-gravity = 1.5           # Heavy downward acceleration
+float_speed = 0.6
+gravity = 1.8
 drop_velocity = 0.0
 is_dropping = False
 
-print("=== SPIDER-VERSE BREACH INITIALIZED ===")
-print("Press SPACEBAR to trigger the Breach (Glitch & Float).")
-print("Press SPACEBAR again to trigger the Snap Drop.")
+print("=== REFINE SPIDER-VERSE BREACH ===")
+print("Press SPACEBAR to make detected objects distort and float.")
+print("Press SPACEBAR again to crash them down.")
 print("Press 'q' to quit.")
 
 while True:
     ret, frame = cap.read()
     if not ret:
         break
-    
+        
     h, w, _ = frame.shape
     output_frame = frame.copy()
+    
+    # --- 1. OBJECT SELECTION via HSV COLOR MASKING ---
+    # This example isolates vibrant/colorful objects. 
+    # Adjust thresholds to target specific colors in your room!
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    lower_color = np.array([0, 100, 100])    # Broad bright colors
+    upper_color = np.array([179, 255, 255])
+    object_mask = cv2.inRange(hsv, lower_color, upper_color)
+    
+    # Clean mask noise
+    kernel = np.ones((5, 5), np.uint8)
+    object_mask = cv2.morphologyEx(object_mask, cv2.MORPH_CLOSE, kernel)
+    object_mask = cv2.dilate(object_mask, kernel, iterations=1)
 
-    # ----------------------------------------------------
-    # STATE 1: THE BREACH (Color Glitch + Body Glitch + Float)
-    # ----------------------------------------------------
+    # --- 2. THE DISTORTION & FLOAT ENGINE ---
     if state == 1 or (state == 2 and is_dropping):
+        # Create a blank canvas for object distortions
+        distorted_objects_layer = np.zeros_like(frame)
         
-        # --- 1. SPIDER-VERSE COLOR GLITCH (Chromatic Aberration) ---
+        # Calculate isolated chromatic distortion for objects ONLY
         b, g, r = cv2.split(frame)
-        shift_amount = random.randint(8, 15)
+        shift = random.randint(6, 12)
+        r_shifted = np.roll(r, -shift, axis=1)
+        b_shifted = np.roll(b, shift, axis=1)
+        glitched_pixels = cv2.merge((b_shifted, g, r_shifted))
         
-        # Shift Red channel left, Blue channel right, leave Green static
-        r_shifted = np.roll(r, -shift_amount, axis=1)
-        b_shifted = np.roll(b, shift_amount, axis=1)
-        glitch_frame = cv2.merge((b_shifted, g, r_shifted))
+        # Spiderverse color tinting (strictly on the glitched pixels)
+        glitched_pixels[:, :, 2] = cv2.add(glitched_pixels[:, :, 2], 35) # Red boost
+        glitched_pixels[:, :, 0] = cv2.add(glitched_pixels[:, :, 0], 15) # Blue boost
         
-        # Remap colors heavily toward Spider-Verse neon pinks and purples
-        # Boost reds/blues and suppress greens slightly for that comic print look
-        glitch_frame[:, :, 2] = cv2.add(glitch_frame[:, :, 2], 40) # Amplify Pink/Red
-        glitch_frame[:, :, 0] = cv2.add(glitch_frame[:, :, 0], 20) # Amplify Blue/Purple
-        
-        # --- 2. BODY GLITCH (Horizontal Slicing) ---
-        # Apply slice displacement to random horizontal bands
-        num_slices = random.randint(3, 7)
+        # Apply local horizontal slice distortions within the object mask boundaries
+        num_slices = random.randint(2, 5)
         for _ in range(num_slices):
-            slice_y = random.randint(0, h - 30)
-            slice_h = random.randint(10, 30)
-            slice_shift = random.randint(-25, 25)
-            
-            glitch_frame[slice_y:slice_y+slice_h, :] = np.roll(
-                glitch_frame[slice_y:slice_y+slice_h, :], slice_shift, axis=1
+            slice_y = random.randint(0, h - 20)
+            slice_h = random.randint(5, 20)
+            slice_shift = random.randint(-15, 15)
+            glitched_pixels[slice_y:slice_y+slice_h, :] = np.roll(
+                glitched_pixels[slice_y:slice_y+slice_h, :], slice_shift, axis=1
             )
+            
+        # Extract only the distorted objects using the mask
+        cv2.copyTo(glitched_pixels, object_mask, distorted_objects_layer)
         
-        output_frame = glitch_frame.copy()
-
-        # --- 3. ZERO-G DRIFT PHYSICS ---
-        ymin, ymax, xmin, xmax = OBJ_ROI
-        obj_h, obj_w = ymax - ymin, xmax - xmin
-        
-        # Patch the original object location using our clean background template
-        output_frame[ymin:ymax, xmin:xmax] = background_template[ymin:ymax, xmin:xmax]
-        
+        # Physics updates for floating
         if state == 1:
-            # Slowly float upwards
             y_offset -= float_speed
-            # Keep it from floating entirely off the top screen boundary
-            if ymin + int(y_offset) < 10:
-                y_offset = float(-ymin + 10)
         elif state == 2 and is_dropping:
-            # Apply gravitational acceleration
             drop_velocity += gravity
             y_offset += drop_velocity
-            
-            # Check if it hit the ground (original position)
             if y_offset >= 0:
                 y_offset = 0
-                state = 0 # Return entirely to normal room state
+                state = 0
                 is_dropping = False
-
-        # Calculate new floating coordinates safely inside frame boundaries
-        new_ymin = max(0, ymin + int(y_offset))
-        new_ymax = min(h, ymax + int(y_offset))
+                
+        # --- 3. SEAMLESS BACKGROUND PATCHING ---
+        # Wherever an object was, fill the live frame with the clean background template
+        background_patch = cv2.bitwise_and(background_cache, background_cache, mask=object_mask)
+        inverse_mask = cv2.bitwise_not(object_mask)
+        clean_live_room = cv2.bitwise_and(frame, frame, mask=inverse_mask)
         
-        # If the object layer moves, slice out its pixels from the original frame and overlay it
-        if new_ymax > new_ymin:
-            obj_pixels = frame[ymin:ymax, xmin:xmax]
-            # Resize or slice adjust if clipped at the top boundary
-            cropped_h = new_ymax - new_ymin
-            output_frame[new_ymin:new_ymax, xmin:xmax] = obj_pixels[0:cropped_h, :]
+        # Merge live room with background filler patches
+        output_frame = cv2.add(clean_live_room, background_patch)
+        
+        # Translate the distorted objects layer dynamically along the Y axis
+        M = np.float32([[1, 0, 0], [0, 1, y_offset]])
+        floating_objects = cv2.warpAffine(distorted_objects_layer, M, (w, h))
+        
+        # Overlay floating objects cleanly on top of the patched room
+        floating_mask = cv2.cvtColor(floating_objects, cv2.COLOR_BGR2GRAY)
+        _, floating_mask = cv2.threshold(floating_mask, 1, 255, cv2.THRESH_BINARY)
+        
+        inverse_floating_mask = cv2.bitwise_not(floating_mask)
+        output_frame = cv2.bitwise_and(output_frame, output_frame, mask=inverse_floating_mask)
+        output_frame = cv2.add(output_frame, floating_objects)
 
-    # ----------------------------------------------------
-    # STATE 0: NORMAL ROOM
-    # ----------------------------------------------------
     else:
-        # Just display the normal live camera feed
-        pass
+        # State 0: Setup mode, display a subtle green glow around tracked objects
+        contours, _ = cv2.findContours(object_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cv2.drawContours(output_frame, contours, -1, (0, 255, 120), 1)
 
-    # Draw a subtle guide box when in setup/normal mode so you know where your object is
-    if state == 0:
-        cv2.rectangle(output_frame, (OBJ_ROI[2], OBJ_ROI[0]), (OBJ_ROI[3], OBJ_ROI[1]), (0, 255, 120), 1)
-        cv2.putText(output_frame, "Target Object Space", (OBJ_ROI[2], OBJ_ROI[0]-10), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 120), 1)
-
-    # Render frame
-    cv2.imshow("Day 2: Multiverse Breach Engine", output_frame)
+    cv2.imshow("Day 2: Localized Multiverse Breach", output_frame)
     
-    # Key listener
     key = cv2.waitKey(1) & 0xFF
-    if key == ord(' '): # SPACEBAR
+    if key == ord(' '):
         if state == 0:
-            state = 1 # Trigger breach
+            state = 1
             y_offset = 0.0
-            print("-> BREACH ACTIVE! Reality is breaking down...")
+            print("-> Object anomaly activated. Bracing for drift...")
         elif state == 1:
-            state = 2 # Trigger drop
+            state = 2
             is_dropping = True
             drop_velocity = 0.0
-            print("-> SNAP EVENT! Gravity re-engaging...")
+            print("-> Gravity restored. Drop initiated...")
     elif key == ord('q'):
         break
 
