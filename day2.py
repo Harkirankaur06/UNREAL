@@ -27,7 +27,7 @@ class UnrealStudioContinuous:
         self.portal_particles = []
 
         # --- VIEWPORT INTERFACE LAYOUT ---
-        self.header = tk.Label(window, text="UNREAL // MULTIVERSE QUANTUM DISPLACEMENT", 
+        self.header = tk.Label(window, text="UNREAL // TIMELINE VERIFIED ENGINE", 
                                fg="#00FFFF", bg="#0B0B0C", font=("Courier", 12, "bold"))
         self.header.pack(pady=10)
         
@@ -83,7 +83,7 @@ class UnrealStudioContinuous:
             self.state = 1
             self.sequence_start_time = time.time()
             self.portal_particles = [] 
-            self.status_var.set("CONSOLE // ATTENTION: TIMELINE OVERLOAD INITIALIZED.")
+            self.status_var.set("CONSOLE // ATTENTION: CORRECTED TIMELINE ENGINE GO.")
 
     def reset_workspace(self):
         self.is_calibrated = False
@@ -111,9 +111,17 @@ class UnrealStudioContinuous:
                 _, motion_mask = cv2.threshold(frame_diff, 24, 255, cv2.THRESH_BINARY)
                 motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_DILATE, np.ones((5,5), np.uint8))
                 
-                # --- PHASE 1: COLORING BOOK BG + CHROMATIC BODY SPLIT (0.0s - 1.8s) ---
-                if elapsed < 1.8:
-                    display_frame = self.coloring_book_bg.copy() # Solid Drawing Book Room
+                # --- NEW RE-CALIBRATED TIMELINE WINDOWS ---
+                
+                # PHASE 1: COLORING BOOK BG + 100% PERFECTLY NORMAL HUMAN BODY (0.0s - 2.0s)
+                if elapsed < 2.0:
+                    display_frame = self.coloring_book_bg.copy()
+                    display_frame[motion_mask > 0] = frame[motion_mask > 0] # Clean, un-glitched original body layer
+                    self.status_var.set("CONSOLE // PHASE 1: CARTOON ROOM, HUMAN NORMAL.")
+
+                # PHASE 2: COLORING BOOK BG + CHROMATIC CHANNEL SPLIT BODY GLITCH (2.0s - 4.0s)
+                elif 2.0 <= elapsed < 4.0:
+                    display_frame = self.coloring_book_bg.copy()
                     
                     glitched_body = frame.copy()
                     b_ch, g_ch, r_ch = cv2.split(glitched_body)
@@ -131,17 +139,17 @@ class UnrealStudioContinuous:
                     
                     glitched_body = cv2.merge((b_ch, g_ch, r_ch))
                     display_frame[motion_mask > 0] = glitched_body[motion_mask > 0]
-                    self.status_var.set("CONSOLE // STAGE 1: BODY FRACTURING INSIDE LINE ART.")
+                    self.status_var.set("CONSOLE // PHASE 2: CHROMATIC BODY SHATTER ENGAGED.")
 
-                # --- PHASE 2: COLORING BOOK BG + PORTAL STORM + INWARD SHRISK SLURP (1.8s - 3.8s) ---
-                elif 1.8 <= elapsed < 3.8:
-                    collapse_progress = (elapsed - 1.8) / 2.0
+                # PHASE 3: COLORING BOOK BG + PORTAL STORM + INWARD SPIRAL VACUUM SLURP (4.0s - 5.2s)
+                elif 4.0 <= elapsed < 5.2:
+                    collapse_progress = (elapsed - 4.0) / 1.2
                     display_frame = self.coloring_book_bg.copy()
                     
                     portal_overlay = display_frame.copy()
                     base_radius = int(150 * max(0.01, 1.0 - collapse_progress))
                     
-                    if base_radius > 5 and elapsed < 3.6:
+                    if base_radius > 5 and elapsed < 5.0:
                         if len(self.portal_particles) < 120:
                             for _ in range(5):
                                 self.portal_particles.append({
@@ -203,26 +211,24 @@ class UnrealStudioContinuous:
                     slurped_matrix = cv2.remap(glitch_src, slurp_x, slurp_y, cv2.INTER_LINEAR)
                     display_frame[motion_mask > 0] = slurped_matrix[motion_mask > 0]
                     
-                    if 3.65 <= elapsed < 3.8:
+                    if 5.05 <= elapsed < 5.2:
                         display_frame = cv2.add(display_frame, (255, 255, 255, 0))
-                    self.status_var.set("CONSOLE // STAGE 2: INWARD HIGH-SPEED HUMAN VACUUM SLURP.")
+                    self.status_var.set("CONSOLE // PHASE 3: PORTAL SPAWNED, INWARD SLURP.")
 
-                # --- PHASE 3: THE 1-SECOND VOID DELAY DELIBERATE HOVER (3.8s - 4.8s) ---
-                elif 3.8 <= elapsed < 4.8:
+                # PHASE 4: THE 1-SECOND VOID DELAY (5.2s - 6.2s)
+                elif 5.2 <= elapsed < 6.2:
                     display_frame = self.coloring_book_bg.copy()
-                    if 3.8 <= elapsed < 3.95:
+                    if 5.2 <= elapsed < 5.35:
                         display_frame = cv2.add(display_frame, (220, 220, 220, 0))
-                    self.status_var.set("CONSOLE // STAGE 3: EVACUATION VERIFIED. SYSTEM COOLDOWN LOOP.")
+                    self.status_var.set("CONSOLE // PHASE 4: 1-SECOND EMPTY CANVAS DELAY.")
 
-                # --- PHASE 4: THE RAINBOW PORTAL REVERSE-SPIRAL LANDING (4.8s - 5.6s) ---
-                elif 4.8 <= elapsed < 5.6:
-                    # Target room snaps completely back to normal
-                    display_frame = self.locked_clean_bg.copy()
+                # PHASE 5: THE RAINBOW PORTAL REVERSE-SPIRAL REGURGITATION LOOKUP (6.2s - 7.0s)
+                elif 6.2 <= elapsed < 7.0:
+                    display_frame = self.locked_clean_bg.copy() # Room is color normal
                     
-                    time_in_phase = (elapsed - 4.8) / 0.8
+                    time_in_phase = (elapsed - 6.2) / 0.8
                     invert_progress = 1.0 - time_in_phase
                     
-                    # --- REVERSE RADIAL UNWIND MESH MATH ---
                     map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
                     map_x = map_x.astype(np.float32)
                     map_y = map_y.astype(np.float32)
@@ -232,51 +238,42 @@ class UnrealStudioContinuous:
                     r_mesh = np.sqrt(dx**2 + dy**2)
                     theta_mesh = np.arctan2(dy, dx)
                     
-                    # Reverse pull multiplier drops sharply down to zero
                     reverse_pull = math.pow(invert_progress, 2.5)
                     
-                    # Forward scaling mapping matrix forces pixels to transition OUTWARD from the center point
                     r_warped = r_mesh * (1.0 - (reverse_pull * np.exp(-r_mesh / 200.0)))
-                    # Rapid untwisting angle factor
                     theta_warped = theta_mesh + (reverse_pull * 7.5 * np.exp(-r_mesh / 120.0))
                     
                     spawn_x = p_cx + r_warped * np.cos(theta_warped)
                     spawn_y = p_cy + r_warped * np.sin(theta_warped)
                     
-                    # --- LIQUID PRISM RAINBOW TRANSITION CHANNELS ---
                     fb, fg, fr = cv2.split(frame)
                     rainbow_spread = int(40 * invert_progress)
-                    
-                    # Offset channels inside the expansion lookup matrix to draw a rainbow burst tail
                     fr = np.roll(fr, -rainbow_spread, axis=1)
                     fb = np.roll(fb, rainbow_spread, axis=1)
                     rainbow_src = cv2.merge((fb, fg, fr))
                     
-                    # Remap the colorful frame through the expanding spiral vectors
                     regurgitated_body = cv2.remap(rainbow_src, spawn_x, spawn_y, cv2.INTER_LINEAR)
                     
-                    # Render the active spawning portal rings directly under the player footprint
                     portal_radius = int(140 * invert_progress)
                     if portal_radius > 5:
                         for ro in range(portal_radius, 0, -10):
                             cv2.ellipse(display_frame, (p_cx, p_cy), (ro, int(ro*0.75)), 
                                         int(time.time()*-280)%360, 0, 360, (0, 240, 255) if ro % 20 == 0 else (255, 0, 130), -1, cv2.LINE_AA)
                     
-                    # Stencil the expanding rainbow body strictly over the room mask canvas
                     display_frame[motion_mask > 0] = regurgitated_body[motion_mask > 0]
-                    self.status_var.set("CONSOLE // PHASE 4: REVERSE SPIRAL RE-ENTRY ACTIVE.")
+                    self.status_var.set("CONSOLE // PHASE 5: RAINBOW RE-ENTRY RECONSTRUCTION.")
 
-                # --- PHASE 5: STABLE ENVIRONMENT OVERVIEW (5.6s+) ---
+                # FINAL TIMELINE STOP AND RESET (7.0s+)
                 else:
                     display_frame = frame.copy() 
                     self.state = 0
                     self.portal_particles = []
-                    self.status_var.set("CONSOLE // STAGE 5: TARGET MULTIVERSE REACHED.")
+                    self.status_var.set("CONSOLE // RESTORATION COMPLETED. DISPLACEMENT SAFE.")
 
                 cv2.putText(display_frame, f"WARP_TIME: {elapsed:.2f}s", (30, h - 30), 
                             cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
             else:
-                cv2.putText(display_frame, "SYS_STATUS // MATRIX_STABLE", (30, h - 30), 
+                cv2.putText(display_frame, "SYS_STATUS // SECURE", (30, h - 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
             # Map array onto Tkinter layout canvas container
