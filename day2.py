@@ -27,7 +27,7 @@ class UnrealStudioContinuous:
         self.portal_particles = []
 
         # --- VIEWPORT INTERFACE LAYOUT ---
-        self.header = tk.Label(window, text="UNREAL // MULTIVERSE TIMELINE RESET", 
+        self.header = tk.Label(window, text="UNREAL // MULTIVERSE QUANTUM DISPLACEMENT", 
                                fg="#00FFFF", bg="#0B0B0C", font=("Courier", 12, "bold"))
         self.header.pack(pady=10)
         
@@ -110,7 +110,6 @@ class UnrealStudioContinuous:
                 frame_diff = cv2.absdiff(frame_gray, bg_gray)
                 _, motion_mask = cv2.threshold(frame_diff, 24, 255, cv2.THRESH_BINARY)
                 motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_DILATE, np.ones((5,5), np.uint8))
-                inv_motion_mask = cv2.bitwise_not(motion_mask)
                 
                 # --- PHASE 1: COLORING BOOK BG + CHROMATIC BODY SPLIT (0.0s - 1.8s) ---
                 if elapsed < 1.8:
@@ -137,11 +136,8 @@ class UnrealStudioContinuous:
                 # --- PHASE 2: COLORING BOOK BG + PORTAL STORM + INWARD SHRISK SLURP (1.8s - 3.8s) ---
                 elif 1.8 <= elapsed < 3.8:
                     collapse_progress = (elapsed - 1.8) / 2.0
-                    
-                    # Room STAYS as the pure sketch drawing book (No bleed back to normal yet)
                     display_frame = self.coloring_book_bg.copy()
                     
-                    # Generate Portal Graphic layers over drawing book base
                     portal_overlay = display_frame.copy()
                     base_radius = int(150 * max(0.01, 1.0 - collapse_progress))
                     
@@ -213,20 +209,65 @@ class UnrealStudioContinuous:
 
                 # --- PHASE 3: THE 1-SECOND VOID DELAY DELIBERATE HOVER (3.8s - 4.8s) ---
                 elif 3.8 <= elapsed < 4.8:
-                    # You are gone. The screen renders ONLY the drawing coloring book room
                     display_frame = self.coloring_book_bg.copy()
-                    
-                    # White flare fade out transition
                     if 3.8 <= elapsed < 3.95:
                         display_frame = cv2.add(display_frame, (220, 220, 220, 0))
                     self.status_var.set("CONSOLE // STAGE 3: EVACUATION VERIFIED. SYSTEM COOLDOWN LOOP.")
 
-                # --- PHASE 4: REAPPEAR IN A TOTAL RAW NORMAL ENVIRONMENT (4.8s+) ---
+                # --- PHASE 4: THE RAINBOW REGURGITATION SKY FALL (4.8s - 5.6s) ---
+                elif 4.8 <= elapsed < 5.6:
+                    # The room transitions immediately back to full normal color
+                    display_frame = frame.copy()
+                    
+                    # Track falling time index (from 0.0 to 1.0)
+                    time_in_phase = (elapsed - 4.8) / 0.8
+                    
+                    # FIX: Start with a negative offset so you fall FROM ABOVE the ceiling down to zero
+                    drop_distance = -int(h * math.pow(1.0 - time_in_phase, 2.5)) 
+                    
+                    # Establish the base world backdrop from the clean cached room template
+                    display_frame = self.locked_clean_bg.copy()
+                    
+                    # --- RAINBOW SPECTRUM SEPARATION SPLIT ---
+                    fb, fg, fr = cv2.split(frame)
+                    
+                    # Draw separate channels with unique trailing displacements to generate a liquid spectrum spectrum
+                    rainbow_spread = int(45 * (1.0 - time_in_phase))
+                    
+                    # Apply offset channels to match color prism refraction paths
+                    fr_shifted = np.zeros_like(fr)
+                    fg_shifted = np.zeros_like(fg)
+                    fb_shifted = np.zeros_like(fb)
+                    
+                    # Create translation offsets for each channel to paint a rainbow trail
+                    if drop_distance != 0:
+                        # Red drops slightly behind
+                        m_r = np.float32([[1, 0, rainbow_spread], [0, 1, drop_distance - rainbow_spread // 2]])
+                        # Green holds the center path
+                        m_g = np.float32([[1, 0, 0], [0, 1, drop_distance]])
+                        # Blue drops out in front
+                        m_b = np.float32([[1, 0, -rainbow_spread], [0, 1, drop_distance + rainbow_spread // 2]])
+                        
+                        fr_shifted = cv2.warpAffine(fr, m_r, (w, h))
+                        fg_shifted = cv2.warpAffine(fg, m_g, (w, h))
+                        fb_shifted = cv2.warpAffine(fb, m_b, (w, h))
+                        
+                        mask_shifted = cv2.warpAffine(motion_mask, m_g, (w, h))
+                        rainbow_body = cv2.merge((fb_shifted, fg_shifted, fr_shifted))
+                        
+                        display_frame[mask_shifted > 0] = rainbow_body[mask_shifted > 0]
+                    else:
+                        # Clean impact landing onto the chair
+                        display_frame[motion_mask > 0] = frame[motion_mask > 0]
+                        
+                    self.status_var.set("CONSOLE // PORTAL SPLIT: REGURGITATING SEGMENTS IN COLOR CANVAS.")
+
+                # --- PHASE 5: COMPLETE RAW ENVIRONMENT RESTORATION (5.6s+) ---
                 else:
-                    display_frame = frame.copy() # Snaps completely back to original normal camera feed
+                    display_frame = frame.copy() 
                     self.state = 0
                     self.portal_particles = []
-                    self.status_var.set("CONSOLE // STAGE 4: RETURN MET. STABLE TIMELINE RESTORED.")
+                    self.status_var.set("CONSOLE // STAGE 5: RETURN MET. STABLE TIMELINE RESTORED.")
 
                 cv2.putText(display_frame, f"WARP_TIME: {elapsed:.2f}s", (30, h - 30), 
                             cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
@@ -248,4 +289,4 @@ class UnrealStudioContinuous:
             self.cap.release()
 
 if __name__ == "__main__":
-    UnrealStudioContinuous(tk.Tk(), "UNREAL Quantum Reset Hub v9.5")
+    UnrealStudioContinuous(tk.Tk(), "UNREAL Quantum Reset Hub v9.6")
