@@ -21,12 +21,13 @@ class UnrealStudioContinuous:
         
         self.sequence_start_time = 0.0
         self.locked_clean_bg = None  
+        self.coloring_book_bg = None 
         
         # Particle System Configuration for the Graphic Portal Storm
         self.portal_particles = []
 
         # --- VIEWPORT INTERFACE LAYOUT ---
-        self.header = tk.Label(window, text="UNREAL // HIGH-VELOCITY HUMAN DISPLACEMENT CORE", 
+        self.header = tk.Label(window, text="UNREAL // MULTIVERSE TIMELINE RESET", 
                                fg="#00FFFF", bg="#0B0B0C", font=("Courier", 12, "bold"))
         self.header.pack(pady=10)
         
@@ -63,23 +64,32 @@ class UnrealStudioContinuous:
         ret, frame = self.cap.read()
         if ret:
             self.locked_clean_bg = cv2.flip(frame, 1)
+            
+            # Procedural Coloring Book Line-Art Filter
+            gray_bg = cv2.cvtColor(self.locked_clean_bg, cv2.COLOR_BGR2GRAY)
+            blurred_bg = cv2.medianBlur(gray_bg, 5)
+            edges = cv2.adaptiveThreshold(blurred_bg, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
+                                          cv2.THRESH_BINARY, 9, 9)
+            self.coloring_book_bg = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+            
             self.is_calibrated = True
-            self.status_var.set("CONSOLE // STABLE BACKGROUND MEMORY SECURED.")
+            self.status_var.set("CONSOLE // ROOM CACHED. DRAWING BOOK ALIGNED.")
 
     def start_anomaly_sequence(self):
         if not self.is_calibrated:
-            self.status_var.set("CONSOLE // ERROR: MEMORY FRAME CALIBRATION REQUIRED.")
+            self.status_var.set("CONSOLE // ERROR: CACHE BACKGROUND FIRST.")
             return
         if self.state == 0:
             self.state = 1
             self.sequence_start_time = time.time()
-            self.portal_particles = [] # Fresh particle array spawn
-            self.status_var.set("CONSOLE // ATTENTION: ULTRA-GRAVITY SINGULARITY ONLINE.")
+            self.portal_particles = [] 
+            self.status_var.set("CONSOLE // ATTENTION: TIMELINE OVERLOAD INITIALIZED.")
 
     def reset_workspace(self):
         self.is_calibrated = False
         self.state = 0
         self.locked_clean_bg = None
+        self.coloring_book_bg = None
         self.portal_particles = []
         self.status_var.set("CONSOLE // REGISTERS REFURNISHED.")
 
@@ -94,83 +104,25 @@ class UnrealStudioContinuous:
                 elapsed = time.time() - self.sequence_start_time
                 p_cx, p_cy = w // 2, h // 2
                 
-                # High-Precision Motion Segmentation Array (Isolates your human body)
+                # Motion Mask Array to track your human body shape bounds
                 frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                 bg_gray = cv2.cvtColor(self.locked_clean_bg, cv2.COLOR_BGR2GRAY)
                 frame_diff = cv2.absdiff(frame_gray, bg_gray)
                 _, motion_mask = cv2.threshold(frame_diff, 24, 255, cv2.THRESH_BINARY)
                 motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_DILATE, np.ones((5,5), np.uint8))
+                inv_motion_mask = cv2.bitwise_not(motion_mask)
                 
-                # Rule 6 Guarantee: Base world background is drawn completely clean from cache
-                display_frame = self.locked_clean_bg.copy()
-                
-                # --- GENERATE PORTAL BACKDROP OBJECT OVERLAY LAYER ---
-                portal_overlay = display_frame.copy()
-                
-                # Controls how the portal radius animates (Grows out during Phase 1, decays during Phase 2)
+                # --- PHASE 1: COLORING BOOK BG + CHROMATIC BODY SPLIT (0.0s - 1.8s) ---
                 if elapsed < 1.8:
-                    portal_growth = min(1.0, elapsed / 1.2)
-                    base_radius = int(150 * portal_growth)
-                elif 1.8 <= elapsed < 3.8:
-                    collapse_progress = (elapsed - 1.8) / 2.0
-                    base_radius = int(150 * max(0.01, 1.0 - collapse_progress))
-                else:
-                    base_radius = 0
-
-                # Generate the spinning vector storm particles behind your shoulders
-                if base_radius > 5 and elapsed < 3.6:
-                    # Keep feeding fresh vector energy rings into matrix
-                    if len(self.portal_particles) < 120:
-                        for _ in range(5):
-                            self.portal_particles.append({
-                                'angle': random.uniform(0, 2 * math.pi),
-                                'dist_factor': random.uniform(0.85, 1.25),
-                                'speed': random.uniform(0.08, 0.22),
-                                'color': random.choice([(0, 255, 255), (255, 0, 140), (255, 255, 255)]),
-                                'size': random.randint(2, 6)
-                            })
+                    display_frame = self.coloring_book_bg.copy() # Solid Drawing Book Room
                     
-                    # Update particle paths tracking inward toward singularity center
-                    for p in self.portal_particles[:]:
-                        p['angle'] += p['speed']
-                        p['dist_factor'] -= 0.01
-                        
-                        if p['dist_factor'] <= 0:
-                            self.portal_particles.remove(p)
-                            continue
-                            
-                        curr_r = int(base_radius * p['dist_factor'])
-                        px = int(p_cx + curr_r * math.cos(p['angle']))
-                        py = int(p_cy + curr_r * 0.75 * math.sin(p['angle'])) # Squashed anamorphic layer depth
-                        
-                        if 0 <= px < w and 0 <= py < h:
-                            cv2.circle(portal_overlay, (px, py), p['size'], p['color'], -1, cv2.LINE_AA)
-                    
-                    # Layer structured neon geometric core ring bands
-                    for ro in range(base_radius, 0, -12):
-                        phase_shift = ro * 0.15 - time.time() * 25
-                        w_ripple = 1.0 + 0.06 * math.sin(phase_shift)
-                        rx = int(ro * w_ripple)
-                        ry = int(ro * 0.75 * w_ripple)
-                        col = (0, 240, 255) if ro % 24 == 0 else (25, 5, 40)
-                        cv2.ellipse(portal_overlay, (p_cx, p_cy), (rx, ry), int(time.time()*150)%360, 0, 360, col, -1, cv2.LINE_AA)
-                
-                # Stamp the generated graphic portal backdrop into the room cache canvas
-                cv2.addWeighted(portal_overlay, 0.85, display_frame, 0.15, 0, display_frame)
-
-                # --- TIMELINE CONTROLLER PROCESSING LAYERS ---
-
-                # --- PHASE 1: JAGGED RGB CHROMATIC SPLIT ON BODY ONLY (0.0s - 1.8s) ---
-                if elapsed < 1.8:
                     glitched_body = frame.copy()
                     b_ch, g_ch, r_ch = cv2.split(glitched_body)
                     
-                    # Apply manual memory shift channels
                     shift_amt = random.randint(25, 50)
                     r_ch = np.roll(r_ch, -shift_amt, axis=1)
                     b_ch = np.roll(b_ch, shift_amt, axis=1)
                     
-                    # Horizontal slicing lines
                     num_slices = random.randint(12, 18)
                     for _ in range(num_slices):
                         sy = random.randint(0, h - 15)
@@ -179,16 +131,57 @@ class UnrealStudioContinuous:
                         r_ch[sy:sy+sh, :] = np.roll(r_ch[sy:sy+sh, :], ss, axis=1)
                     
                     glitched_body = cv2.merge((b_ch, g_ch, r_ch))
-                    
-                    # Stencil the color-ripped body layer directly on top of the background room and portal
                     display_frame[motion_mask > 0] = glitched_body[motion_mask > 0]
-                    self.status_var.set("CONSOLE // PHASE 1: CHROMATIC CHANNEL SHATTER IN PROCESS.")
+                    self.status_var.set("CONSOLE // STAGE 1: BODY FRACTURING INSIDE LINE ART.")
 
-                # --- PHASE 2: RAPID SPINNING RADIAL INWARD COMPRESSION SLURP (1.8s - 3.8s) ---
+                # --- PHASE 2: COLORING BOOK BG + PORTAL STORM + INWARD SHRISK SLURP (1.8s - 3.8s) ---
                 elif 1.8 <= elapsed < 3.8:
                     collapse_progress = (elapsed - 1.8) / 2.0
                     
-                    # Establish destination lookup mapping mesh arrays
+                    # Room STAYS as the pure sketch drawing book (No bleed back to normal yet)
+                    display_frame = self.coloring_book_bg.copy()
+                    
+                    # Generate Portal Graphic layers over drawing book base
+                    portal_overlay = display_frame.copy()
+                    base_radius = int(150 * max(0.01, 1.0 - collapse_progress))
+                    
+                    if base_radius > 5 and elapsed < 3.6:
+                        if len(self.portal_particles) < 120:
+                            for _ in range(5):
+                                self.portal_particles.append({
+                                    'angle': random.uniform(0, 2 * math.pi),
+                                    'dist_factor': random.uniform(0.85, 1.25),
+                                    'speed': random.uniform(0.08, 0.22),
+                                    'color': random.choice([(0, 255, 255), (255, 0, 140), (255, 255, 255)]),
+                                    'size': random.randint(2, 6)
+                                })
+                        
+                        for p in self.portal_particles[:]:
+                            p['angle'] += p['speed']
+                            p['dist_factor'] -= 0.01
+                            
+                            if p['dist_factor'] <= 0:
+                                self.portal_particles.remove(p)
+                                continue
+                                
+                            curr_r = int(base_radius * p['dist_factor'])
+                            px = int(p_cx + curr_r * math.cos(p['angle']))
+                            py = int(p_cy + curr_r * 0.75 * math.sin(p['angle']))
+                            
+                            if 0 <= px < w and 0 <= py < h:
+                                cv2.circle(portal_overlay, (px, py), p['size'], p['color'], -1, cv2.LINE_AA)
+                        
+                        for ro in range(base_radius, 0, -12):
+                            phase_shift = ro * 0.15 - time.time() * 25
+                            w_ripple = 1.0 + 0.06 * math.sin(phase_shift)
+                            rx = int(ro * w_ripple)
+                            ry = int(ro * 0.75 * w_ripple)
+                            col = (0, 240, 255) if ro % 24 == 0 else (25, 5, 40)
+                            cv2.ellipse(portal_overlay, (p_cx, p_cy), (rx, ry), int(time.time()*150)%360, 0, 360, col, -1, cv2.LINE_AA)
+                    
+                    cv2.addWeighted(portal_overlay, 0.85, display_frame, 0.15, 0, display_frame)
+
+                    # --- INWARD COVECTIVE SLURP VECTOR ENGINE ---
                     map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
                     map_x = map_x.astype(np.float32)
                     map_y = map_y.astype(np.float32)
@@ -198,47 +191,50 @@ class UnrealStudioContinuous:
                     r_mesh = np.sqrt(dx**2 + dy**2)
                     theta_mesh = np.arctan2(dy, dx)
                     
-                    # Exponential non-linear acceleration pull factor
                     pull_rate = math.pow(collapse_progress, 3.0) 
                     
-                    # Inverse lookup division math forces pixels to suck INWARD to center coordinates
                     r_warped = r_mesh / (1.0 - (pull_rate * np.exp(-r_mesh / 240.0)))
-                    # Tight fluid spiral spinning (Multiplied to 6.8 for hyper rotation)
                     theta_warped = theta_mesh - (pull_rate * 6.8 * np.exp(-r_mesh / 110.0))
                     
                     slurp_x = p_cx + r_warped * np.cos(theta_warped)
                     slurp_y = p_cy + r_warped * np.sin(theta_warped)
                     
-                    # Split incoming video track to maintain RGB aberration split inside the slurp transformation
                     frame_b, frame_g, frame_r = cv2.split(frame)
                     frame_r = np.roll(frame_r, -25, axis=1)
                     frame_b = np.roll(frame_b, 25, axis=1)
                     glitch_src = cv2.merge((frame_b, frame_g, frame_r))
                     
                     slurped_matrix = cv2.remap(glitch_src, slurp_x, slurp_y, cv2.INTER_LINEAR)
-                    
-                    # Apply the spinning slurp pixel displacement EXCLUSIVELY onto your human body mask coordinates
                     display_frame[motion_mask > 0] = slurped_matrix[motion_mask > 0]
                     
-                    # Blinding flash array at instant of complete compression pop
                     if 3.65 <= elapsed < 3.8:
                         display_frame = cv2.add(display_frame, (255, 255, 255, 0))
-                    self.status_var.set("CONSOLE // PHASE 2: MASS COMPRESSION CONVECTIVE DISPLACEMENT.")
+                    self.status_var.set("CONSOLE // STAGE 2: INWARD HIGH-SPEED HUMAN VACUUM SLURP.")
 
-                # --- PHASE 3: CALIBRATED RESET BACK TO NORMAL STABLE FEED (3.8s+) ---
+                # --- PHASE 3: THE 1-SECOND VOID DELAY DELIBERATE HOVER (3.8s - 4.8s) ---
+                elif 3.8 <= elapsed < 4.8:
+                    # You are gone. The screen renders ONLY the drawing coloring book room
+                    display_frame = self.coloring_book_bg.copy()
+                    
+                    # White flare fade out transition
+                    if 3.8 <= elapsed < 3.95:
+                        display_frame = cv2.add(display_frame, (220, 220, 220, 0))
+                    self.status_var.set("CONSOLE // STAGE 3: EVACUATION VERIFIED. SYSTEM COOLDOWN LOOP.")
+
+                # --- PHASE 4: REAPPEAR IN A TOTAL RAW NORMAL ENVIRONMENT (4.8s+) ---
                 else:
-                    display_frame = frame.copy()
+                    display_frame = frame.copy() # Snaps completely back to original normal camera feed
                     self.state = 0
                     self.portal_particles = []
-                    self.status_var.set("CONSOLE // SEQUENCE MET. SYSTEM SAFELY RE-ANCHORED TO STABLE DIMENSION.")
+                    self.status_var.set("CONSOLE // STAGE 4: RETURN MET. STABLE TIMELINE RESTORED.")
 
-                cv2.putText(display_frame, f"WARP_FACTOR: {elapsed:.2f}s", (30, h - 30), 
+                cv2.putText(display_frame, f"WARP_TIME: {elapsed:.2f}s", (30, h - 30), 
                             cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
             else:
-                cv2.putText(display_frame, "SYS_STATUS // SECURE", (30, h - 30), 
+                cv2.putText(display_frame, "SYS_STATUS // MATRIX_STABLE", (30, h - 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
-            # Map the finalized pixel matrix to the interface canvas container
+            # Map array onto Tkinter layout canvas container
             img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
             img_tk = ImageTk.PhotoImage(image=img)
@@ -252,4 +248,4 @@ class UnrealStudioContinuous:
             self.cap.release()
 
 if __name__ == "__main__":
-    UnrealStudioContinuous(tk.Tk(), "UNREAL Chromatic Breach Engine v8.5")
+    UnrealStudioContinuous(tk.Tk(), "UNREAL Quantum Reset Hub v9.5")
