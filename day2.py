@@ -21,10 +21,13 @@ class UnrealStudioContinuous:
         
         # Timeline Mechanics
         self.panic_start_time = 0.0
-        self.panic_duration = 3.5  # Total time until complete evacuation
+        self.panic_duration = 4.0  # Slightly longer for the epic portal build
         
         # Static Background Frame Cache
         self.locked_clean_bg = None  
+        
+        # Advanced Portal Particle System
+        self.portal_particles = []
 
         # --- UI VIEWPORT LAYOUT ---
         self.header = tk.Label(window, text="UNREAL // MULTIVERSE PORTAL ENGINE - DAY 2", 
@@ -65,7 +68,7 @@ class UnrealStudioContinuous:
         if ret:
             self.locked_clean_bg = cv2.flip(frame, 1)
             self.is_calibrated = True
-            self.status_var.set("CONSOLE // ROOM GEOMETRY CACHED. SYSTEM READY TO TRIGGER BREACH.")
+            self.status_var.set("CONSOLE // ROOM GEOMETRY CACHED. READY FOR PORTAL SEQUENCE.")
 
     def activate_portal_sequence(self):
         if not self.is_calibrated:
@@ -75,12 +78,14 @@ class UnrealStudioContinuous:
         if self.state == 0:
             self.state = 1
             self.panic_start_time = time.time()
-            self.status_var.set("CONSOLE // CRITICAL BREACH. PORTAL OPENING... BRACE FOR EVACUATION.")
+            self.portal_particles = [] # Clear old particles
+            self.status_var.set("CONSOLE // RIFT DETECTED. HIGH-ENERGY CONDENSATION STARTING.")
 
     def reset_workspace(self):
         self.is_calibrated = False
         self.state = 0
         self.locked_clean_bg = None
+        self.portal_particles = []
         self.status_var.set("CONSOLE // WORKSPACE CLEAR. RE-CALIBRATE ROOM.")
 
     def update_stream_loop(self):
@@ -93,10 +98,9 @@ class UnrealStudioContinuous:
             if self.state == 1:
                 elapsed = time.time() - self.panic_start_time
                 
-                # --- PHASE 4: DISMISSAL SEQUENCE (THE COMPLETION) ---
                 if elapsed >= self.panic_duration:
                     self.state = 0
-                    self.status_var.set("CONSOLE // BREACH TERMINATED. EVACUATION SUCCESSFUL.")
+                    self.status_var.set("CONSOLE // ESCAPE SUCCESSFUL. BREAKOUT CONCLUDED.")
                 
                 # --- MOTION ISOLATION MATRIX ---
                 frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
@@ -107,17 +111,13 @@ class UnrealStudioContinuous:
                 
                 # Default scene structure starts as the normal frozen room layout
                 display_frame = self.locked_clean_bg.copy()
-                
-                # Portal anchor coordinates centered right behind you
                 p_cx, p_cy = w // 2, h // 2
                 
-                # --- PHASE 1 & 2: PANIC AND PORTAL GENERATION ---
-                if elapsed < 2.8:
-                    # Construct high-frequency Spider-Verse body glitching
+                # --- PHASE 1 & 2: PANIC OVERLOAD + HIGH-END SPIDER-VERSE RIFT ---
+                if elapsed < 3.2:
                     glitched_body = frame.copy()
                     b, g, r = cv2.split(glitched_body)
                     
-                    # Dial up intensity over elapsed runtime
                     shift = random.randint(25, 55)
                     r_shifted = np.roll(r, -shift, axis=1)
                     b_shifted = np.roll(b, shift, axis=1)
@@ -133,53 +133,76 @@ class UnrealStudioContinuous:
                             glitched_body[slice_y:slice_y+slice_h, :], slice_shift, axis=1
                         )
                     
-                    # Neon color grading injection
-                    glitched_body[:, :, 2] = cv2.add(glitched_body[:, :, 2], 70) # Hot Pink
-                    glitched_body[:, :, 0] = cv2.add(glitched_body[:, :, 0], 40) # Indigo
+                    glitched_body[:, :, 2] = cv2.add(glitched_body[:, :, 2], 75) # Aggressive Pink
+                    glitched_body[:, :, 0] = cv2.add(glitched_body[:, :, 0], 45) # Intense Indigo
                     
-                    # --- INTERDIMENSIONAL PORTAL RENDERING ---
-                    portal_canvas = display_frame.copy()
-                    # Calculate radius pacing using sine wave expansion
-                    max_radius = int(min(w, h) * 0.38)
-                    current_radius = int(max_radius * min(1.0, elapsed / 2.0))
+                    # --- PROCEDURAL HIGH-ENERGY PORTAL GENERATION ---
+                    portal_overlay = display_frame.copy()
                     
-                    if current_radius > 5:
-                        # Draw swirling vector rings to match comic texture art style
-                        for r_offset in range(current_radius, 0, -12):
-                            color_factor = (r_offset / current_radius)
-                            p_color = (int(255 * (1 - color_factor)), int(230 * color_factor), int(255 * (1 - color_factor)))
-                            cv2.ellipse(portal_canvas, (p_cx, p_cy), (r_offset, int(r_offset * 1.2)), 
-                                        int(time.time() * 90) % 360, 0, 360, p_color, -1, cv2.LINE_AA)
+                    # Scale portal up gracefully over the first 1.5 seconds
+                    growth_factor = min(1.0, elapsed / 1.5)
+                    base_radius = int(140 * growth_factor)
+                    
+                    if base_radius > 10:
+                        # 1. Spawn spinning outer ring energy streaks
+                        for _ in range(15):
+                            angle = random.uniform(0, 2 * math.pi)
+                            # Add an undulating ripple based on a quick wave calculation
+                            distortion = 1.0 + 0.15 * math.sin(time.time() * 25 + angle * 4)
+                            r_curr = int(base_radius * distortion)
+                            
+                            px = int(p_cx + r_curr * math.cos(angle))
+                            py = int(p_cy + r_curr * 0.8 * math.sin(angle)) # Sightly squashed anamorphic ring
+                            
+                            p_color = random.choice([(255, 0, 140), (0, 240, 255), (255, 255, 255)])
+                            cv2.circle(portal_overlay, (px, py), random.randint(2, 6), p_color, -1, cv2.LINE_AA)
                         
-                        # Smooth blend the portal overlay onto the static room template
-                        cv2.addWeighted(portal_canvas, 0.7, display_frame, 0.3, 0, display_frame)
+                        # 2. Draw intense internal multi-layered neon energy bands
+                        for r_offset in range(base_radius, 0, -10):
+                            phase_shift = r_offset * 0.1 - time.time() * 15
+                            wave_val = 1.0 + 0.1 * math.sin(phase_shift)
+                            rx = int(r_offset * wave_val)
+                            ry = int(r_offset * 0.8 * wave_val)
+                            
+                            # Alternate colors through the rift core layers
+                            if r_offset % 30 == 0:
+                                col = (255, 0, 140) # Hot Magenta
+                            elif r_offset % 20 == 0:
+                                col = (0, 230, 255) # Electric Cyan
+                            else:
+                                col = (40, 10, 50)  # Dark Void Core
+                                
+                            cv2.ellipse(portal_overlay, (p_cx, p_cy), (rx, ry), int(time.time() * 60) % 360, 0, 360, col, -1, cv2.LINE_AA)
 
-                    # Layer your live glitched body cleanly ON TOP of the portal and background
+                        # Mix portal graphics onto clean background template
+                        cv2.addWeighted(portal_overlay, 0.85, display_frame, 0.15, 0, display_frame)
+
+                    # Seamlessly layer your live glitched body ON TOP of the background room and portal
                     display_frame[motion_mask > 0] = glitched_body[motion_mask > 0]
                     
-                # --- PHASE 3: THE ZAP (COGNITIVE EVACUATION COMPLETE) ---
-                elif 2.8 <= elapsed < self.panic_duration:
-                    # You vanish entirely. The background displays only your room and a collapsing portal mesh.
-                    portal_canvas = display_frame.copy()
-                    collapse_factor = max(0.0, 1.0 - ((elapsed - 2.8) / (self.panic_duration - 2.8)))
-                    current_radius = int(int(min(w, h) * 0.38) * collapse_factor)
+                # --- PHASE 3: THE DETONATION ZAP & COLLAPSE ---
+                elif 3.2 <= elapsed < self.panic_duration:
+                    # You have broken reality and faded out. Only the portal remains, aggressively shrinking.
+                    portal_overlay = display_frame.copy()
+                    collapse_factor = max(0.0, 1.0 - ((elapsed - 3.2) / (self.panic_duration - 3.2)))
+                    base_radius = int(140 * collapse_factor)
                     
-                    if current_radius > 2:
-                        # Rapidly spinning diminishing energy bands
-                        for r_offset in range(current_radius, 0, -8):
-                            cv2.ellipse(portal_canvas, (p_cx, p_cy), (r_offset, int(r_offset * 1.3)), 
-                                        int(time.time() * -200) % 360, 0, 360, (255, 0, 140), -1, cv2.LINE_AA)
-                        cv2.addWeighted(portal_canvas, 0.8 * collapse_factor, display_frame, 1.0 - (0.8 * collapse_factor), 0, display_frame)
-                        
-                    # Inject an extreme blinding white screen flash precisely on frame breakaway transition
-                    if 2.8 <= elapsed < 2.92:
-                        display_frame = cv2.add(display_frame, (230, 230, 230, 0))
+                    if base_radius > 2:
+                        for r_offset in range(base_radius, 0, -8):
+                            rx = int(r_offset * (1.0 + 0.1 * math.sin(time.time() * 40)))
+                            ry = int(r_offset * 0.8)
+                            cv2.ellipse(portal_overlay, (p_cx, p_cy), (rx, ry), int(time.time() * -180) % 360, 0, 360, (0, 240, 255), -1, cv2.LINE_AA)
+                        cv2.addWeighted(portal_overlay, 0.9 * collapse_factor, display_frame, 1.0 - (0.9 * collapse_factor), 0, display_frame)
+                    
+                    # Absolute blinding white-hot flash on frame transition
+                    if 3.2 <= elapsed < 3.32:
+                        display_frame = cv2.add(display_frame, (245, 245, 245, 0))
 
-                # HUD Trace Display
+                # HUD Diagnostics
                 cv2.putText(display_frame, "EVAC_SEQUENCE_ACTIVE", (30, h - 30), 
                             cv2.FONT_HERSHEY_TRIPLEX, 0.55, (0, 0, 255), 1, cv2.LINE_AA)
             else:
-                # Standby state: Show standard mirror stream layout
+                # Standby state
                 cv2.putText(display_frame, "PORTAL STABLE // SYSTEM READY", (30, h - 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
