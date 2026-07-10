@@ -7,38 +7,28 @@ import time
 # Initialize Webcam
 cap = cv2.VideoCapture(0)
 
-# State Management: 0 = Candles Burning, 1 = Blown Out + Confetti Panic!
+# State Management: 0 = Sliding Up, 1 = Idle/Burning, 2 = Celebration Explosion
 state = 0  
 
-# Animation configuration for the cake sliding in from the bottom
-cake_y_offset = 300.0  # Start far below the screen boundary
-target_offset = 0.0
-slide_speed = 6.0      # Lower value = smoother cinematic glide up
+# Position Configurations
+cake_y = 600.0       # Start offscreen
+target_y = 380.0     # Pushed lower down the screen (out of the center)
+slide_speed = 0.1    # Smooth cinematic transition glide up
 
-# Particle System Configuration for Confetti
-num_particles = 140
+# Individual candle configurations: [x_pos, is_alive, flame_flicker]
+candles = [[250, True, 0], [320, True, 0], [390, True, 0]]
 particles = []
 
-for _ in range(num_particles):
-    particles.append({
-        'x': random.randint(0, 640),
-        'y': random.randint(-400, 0),
-        'color': (random.randint(120, 255), random.randint(50, 200), random.randint(180, 255)), # Cyberpunk palette
-        'speed_y': random.uniform(4, 8),
-        'speed_x': random.uniform(-2.5, 2.5),
-        'size': random.randint(4, 10),
-        'phase': random.uniform(0, 2 * math.pi)
-    })
+# Banner animation variables
+banner_y = -100.0
+target_banner_y = 70.0
 
-# Optical Flow Setup variables to track "blowing" motion
 ret, prev_frame = cap.read()
 if ret:
     prev_frame = cv2.flip(prev_frame, 1)
     prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
 
-print("=== PHANTOM CAKE ENGINE LIVE V2 ===")
-print("Watch the cake emerge... Then blow to celebrate!")
-print("Press 'q' to exit.")
+print("=== CLEAN NEON CAKE ENGINE ONLINE ===")
 
 while True:
     ret, frame = cap.read()
@@ -49,109 +39,138 @@ while True:
     h, w, c = frame.shape
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
-    # --- 1. THE COOL CINEMATIC COLOR GRADE FILTER ---
-    # We apply a custom color curve map to create a sleek film look
-    # Boosting reds/magentas in highlights, deepening blues in shadows
+    # --- 1. AESTHETIC COLOR GRADE FILTER ---
+    # Apply soft cinematic lut-style contrast to look premium on camera
     b, g, r = cv2.split(frame)
+    r = cv2.addWeighted(r, 0.95, np.zeros_like(r), 0, 10)
+    b = cv2.addWeighted(b, 0.85, np.zeros_like(b), 0, -5)
+    output_frame = cv2.merge((b, g, r))
     
-    # Create Look-Up Tables (LUT) for professional color grading curves
-    lut_r = np.array([np.clip(i + 15 * math.sin(i / 32.0), 0, 255) for i in range(256)]).astype("uint8")
-    lut_b = np.array([np.clip(i + 10 * math.cos(i / 64.0), 0, 255) for i in range(256)]).astype("uint8")
-    
-    r_graded = cv2.LUT(r, lut_r)
-    b_graded = cv2.LUT(b, lut_b)
-    output_frame = cv2.merge((b_graded, g, r_graded))
-    
-    # Add a soft cinematic vignette overlay
-    kernel_x = cv2.getGaussianKernel(w, w/2)
-    kernel_y = cv2.getGaussianKernel(h, h/2)
-    vignette_mask = kernel_y * kernel_x.T
-    vignette_mask = vignette_mask / np.max(vignette_mask)
-    # Blend vignette gently
-    output_frame = (output_frame * np.dstack([vignette_mask]*3 + (1.0 - vignette_mask)*0.3)).astype(np.uint8)
-
-    # --- 2. CAKE ANIMATION SEQUENCE (SLIDE UP) ---
-    if cake_y_offset > target_offset:
-        cake_y_offset -= slide_speed
-        if cake_y_offset < target_offset:
-            cake_y_offset = target_offset
-
-    # --- 3. OPTICAL FLOW MOTION DETECTION (THE BLOW) ---
-    if state == 0 and cake_y_offset == target_offset:
-        roi_x_start, roi_x_end = w // 2 - 80, w // 2 + 80
-        roi_y_start, roi_y_end = h // 2 - 130, h // 2 - 40
-        
-        flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 15, 3, 5, 1.2, 0)
-        roi_flow = flow[roi_y_start:roi_y_end, roi_x_start:roi_x_end]
-        
-        magnitude, _ = cv2.cartToPolar(roi_flow[..., 0], roi_flow[..., 1])
-        motion_level = np.mean(magnitude)
-        
-        if motion_level > 4.0:  
+    # --- 2. SMOOTH SLIDE-IN ANIMATION ---
+    if state == 0:
+        cake_y += (target_y - cake_y) * slide_speed
+        if abs(cake_y - target_y) < 1.0:
+            cake_y = target_y
             state = 1
-            
-        prev_gray = gray.copy()
 
-    # --- 4. RENDER THE INTERACTIVE CAKE LAYERS WITH ANIMATION SHIFT ---
-    # Apply the cake_y_offset dynamically to move it up from below the frame
-    cx, cy = w // 2, h // 2 + 160 + int(cake_y_offset)
-    
-    # Base Tier
-    cv2.rectangle(output_frame, (cx - 110, cy), (cx + 110, cy + 80), (240, 190, 255), -1) 
-    cv2.rectangle(output_frame, (cx - 110, cy), (cx + 110, cy + 80), (210, 130, 230), 2)  
-    
-    # Top Tier
-    cv2.rectangle(output_frame, (cx - 75, cy - 50), (cx + 75, cy), (255, 220, 240), -1)
-    cv2.rectangle(output_frame, (cx - 75, cy - 50), (cx + 75, cy), (230, 140, 190), 2)
-    
-    # Candles
-    candle_positions = [cx - 40, cx, cx + 40]
-    for candle_x in candle_positions:
-        cv2.line(output_frame, (candle_x, cy - 50), (candle_x, cy - 72), (255, 255, 255), 3) 
-        
-        if state == 0:
-            flicker = random.randint(-2, 2)
-            # Stylized glowing flames
-            cv2.ellipse(output_frame, (candle_x, cy - 82 + (flicker // 2)), (6, 9 + flicker), 
-                        0, 0, 360, (0, 130, 255), -1) 
-            cv2.ellipse(output_frame, (candle_x, cy - 79), (3, 5), 
-                        0, 0, 360, (0, 240, 255), -1) 
-
-    # --- 5. CELEBRATION DISPERSION ---
+    # --- 3. REFINED DIRECTIONAL MOTION (THE BLOW) ---
     if state == 1:
-        for p in particles:
-            p['y'] += p['speed_y']
-            p['x'] += p['speed_x'] + math.sin(time.time() + p['phase']) * 1.5 
-            
-            if p['y'] > h:
-                p['y'] = random.randint(-50, -10)
-                p['x'] = random.randint(0, w)
+        flow = cv2.calcOpticalFlowFarneback(prev_gray, gray, None, 0.5, 3, 11, 3, 5, 1.1, 0)
+        prev_gray = gray.copy()
+        
+        for candle in candles:
+            cx_pos = candle[0]
+            if candle[1]:  # If candle is burning
+                # Sample local flow area directly above the wick coordinates
+                local_flow = flow[int(cake_y-70):int(cake_y-20), cx_pos-20:cx_pos+20]
+                mean_u = np.mean(local_flow[..., 0]) 
+                mean_v = np.mean(local_flow[..., 1]) 
+                magnitude = math.sqrt(mean_u**2 + mean_v**2)
                 
-            ix, iy = int(p['x']), int(p['y'])
-            if p['size'] % 2 == 0:
-                cv2.circle(output_frame, (ix, iy), p['size'], p['color'], -1)
-            else:
-                cv2.rectangle(output_frame, (ix, iy), (ix + p['size'], iy + p['size']), p['color'], -1)
+                # Visual tilt response to breathing
+                candle[2] = int(mean_u * 3)
+                
+                if magnitude > 3.5: # Balanced sensitivity
+                    candle[1] = False
+                    # Generate neat glowing spark eruption
+                    for _ in range(25):
+                        particles.append({
+                            'x': float(cx_pos),
+                            'y': float(cake_y - 45),
+                            'vx': random.uniform(-3, 3) + (mean_u * 0.3),
+                            'vy': random.uniform(-10, -4),
+                            'color': (random.randint(200, 255), random.randint(150, 255), 0),
+                            'size': random.randint(3, 6),
+                            'life': 1.0
+                        })
+        
+        if not any(c[1] for c in candles):
+            state = 2
 
-        # Dynamic glowing text effect
-        text = "HAPPY BIRTHDAY MOM!"
-        font = cv2.FONT_HERSHEY_TRIPLEX
-        text_scale = 1.1
-        thickness = 2
-        
-        text_size = cv2.getTextSize(text, font, text_scale, thickness)[0]
-        text_x = (w - text_size[0]) // 2
-        text_y = 60
-        
-        pulse = int(abs(math.sin(time.time() * 5)) * 10)
-        
-        # Dual overlay text depth for neon flare finish
-        cv2.putText(output_frame, text, (text_x, text_y), font, text_scale, (255, 0, 128), thickness + 5 + (pulse // 2), cv2.LINE_AA)
-        cv2.putText(output_frame, text, (text_x, text_y), font, text_scale, (255, 255, 255), thickness, cv2.LINE_AA)
-
-    # Render Display Window
-    cv2.imshow("Day 2: Phantom Birthday Cake Engine v2", output_frame)
+    # --- 4. RENDER GLASSMORPHIC GLOWING CAKE ---
+    cy = int(cake_y)
+    cx = w // 2
     
+    # Create an overlay canvas for glass transparency blending
+    overlay = output_frame.copy()
+    
+    # Base Tier Glass Fill
+    cv2.rectangle(overlay, (cx - 130, cy), (cx + 130, cy + 70), (40, 10, 20), -1)
+    # Top Tier Glass Fill
+    cv2.rectangle(overlay, (cx - 90, cy - 45), (cx + 90, cy), (50, 15, 30), -1)
+    
+    # Apply transparency overlay onto frame
+    cv2.addWeighted(overlay, 0.35, output_frame, 0.65, 0, output_frame)
+    
+    # Draw precise, sharp neon neon outlines
+    cv2.rectangle(output_frame, (cx - 130, cy), (cx + 130, cy + 70), (255, 0, 180), 2, cv2.LINE_AA) # Base Neon Outline
+    cv2.rectangle(output_frame, (cx - 90, cy - 45), (cx + 90, cy), (255, 230, 0), 2, cv2.LINE_AA)  # Top Neon Outline
+
+    # Render Clean Geometric Candles
+    for candle in candles:
+        wx = candle[0]
+        cv2.line(output_frame, (wx, cy - 45), (wx, cy - 60), (240, 240, 240), 2, cv2.LINE_AA) # Wick
+        
+        if candle[1]: # If alive, draw clean glowing flames
+            tx = candle[2]
+            cv2.circle(output_frame, (wx + tx, cy - 70), 6, (0, 165, 255), -1, cv2.LINE_AA)
+            cv2.circle(output_frame, (wx + int(tx*0.5), cy - 68), 3, (0, 255, 255), -1, cv2.LINE_AA)
+
+    # --- 5. ANIMATED CELEBRATION BANNER & CONFETTI ---
+    if state == 2:
+        # Smoothly slide down the birthday banner in the background
+        if banner_y < target_banner_y:
+            banner_y += (target_banner_y - banner_y) * 0.08
+
+        # Continuous gentle confetti fountain
+        if len(particles) < 60:
+            particles.append({
+                'x': float(random.randint(cx - 120, cx + 120)),
+                'y': float(cy - 20),
+                'vx': random.uniform(-2, 2),
+                'vy': random.uniform(-7, -4),
+                'color': random.choice([(0, 230, 255), (255, 0, 140), (255, 255, 255), (0, 255, 120)]),
+                'size': random.randint(3, 6),
+                'life': 1.0
+            })
+
+        # Draw the sleek glowing background banner layout
+        bx, by = cx, int(banner_y)
+        text = "HAPPY BIRTHDAY MOM"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        
+        # Center text coordinates
+        t_size = cv2.getTextSize(text, font, 0.9, 2)[0]
+        tx = bx - t_size[0] // 2
+        
+        # Draw clean, stylized typography banner backing box
+        banner_overlay = output_frame.copy()
+        cv2.rectangle(banner_overlay, (tx - 20, by - 35), (tx + t_size[0] + 20, by + 15), (20, 20, 20), -1)
+        cv2.addWeighted(banner_overlay, 0.6, output_frame, 0.4, 0, output_frame)
+        cv2.rectangle(output_frame, (tx - 20, by - 35), (tx + t_size[0] + 20, by + 15), (0, 230, 255), 1, cv2.LINE_AA)
+
+        # Pulse animation factor for text glow
+        pulse = int(abs(math.sin(time.time() * 4)) * 4)
+        cv2.putText(output_frame, text, (tx, by), font, 0.9, (255, 0, 140), 2 + pulse, cv2.LINE_AA)
+        cv2.putText(output_frame, text, (tx, by), font, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+
+    # Process and draw particles safely with alpha life decay
+    for p in particles[:]:
+        p['x'] += p['vx']
+        p['y'] += p['vy']
+        p['vy'] += 0.22 # Gravity vector pull
+        p['life'] -= 0.012
+        
+        if p['life'] <= 0 or p['y'] > h:
+            particles.remove(p)
+            continue
+            
+        ix, iy = int(p['x']), int(p['y'])
+        if 0 <= ix < w and 0 <= iy < h:
+            decay_color = tuple([int(c_val * p['life']) for c_val in p['color']])
+            cv2.circle(output_frame, (ix, iy), int(p['size'] * p['life']), decay_color, -1, cv2.LINE_AA)
+
+    cv2.imshow("Day 2 Challenge: Glassmorphic Cake Engine", output_frame)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
