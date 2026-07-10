@@ -21,8 +21,8 @@ class UnrealStudioContinuous:
         
         # Physics Engines
         self.float_y = 0.0
-        self.float_speed = 1.8   # Faster upward panic climb
-        self.gravity = 2.8       # Heavy gravitational slam down
+        self.float_speed = 2.2   # Fast, unstable levitation drift
+        self.gravity = 3.4       # Hard, violent crash slam down
         self.drop_velocity = 0.0
         
         # Geometry and Live Tracking Cache
@@ -160,51 +160,63 @@ class UnrealStudioContinuous:
                         live_mask_crop = cv2.resize(self.mask_crop, (ow, oh))
                         live_object_crop = cv2.resize(self.object_crop, (ow, oh))
                         
-                        # Dynamic Mask Allocation
+                        # Dynamic Mask Allocation for Object
                         dynamic_mask = np.zeros(frame.shape[:2], np.uint8)
                         dynamic_mask[oy:oy+oh, ox:ox+ow] = live_mask_crop
                         inv_mask = cv2.bitwise_not(dynamic_mask)
 
                         if self.is_levitating:
-                            # 1. APPLY EXTREME BODY PANIC GLITCH (To everything except the floating object)
-                            glitched_scene = frame.copy()
+                            # --- LOCALIZED DYNAMIC PANIC GLITCH ---
+                            # Calculate frame change (motion tracking) to isolate YOU from walls
+                            frame_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                            bg_gray = cv2.cvtColor(self.locked_clean_bg, cv2.COLOR_BGR2GRAY)
+                            frame_diff = cv2.absdiff(frame_gray, bg_gray)
+                            _, motion_mask = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
                             
-                            # Independent Chromatic Splits
-                            b, g, r = cv2.split(glitched_scene)
-                            shift = random.randint(18, 35) # Brutal pixel misalignment
+                            # Clean motion boundaries, ensure the object is subtracted out
+                            motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_DILATE, np.ones((5,5), np.uint8))
+                            motion_mask = cv2.bitwise_and(motion_mask, inv_mask)
+                            
+                            # Build the Spider-Verse glitch base
+                            glitched_body = frame.copy()
+                            b, g, r = cv2.split(glitched_body)
+                            shift = random.randint(22, 40) # Intense color misalignment
                             r_shifted = np.roll(r, -shift, axis=1)
                             b_shifted = np.roll(b, shift, axis=1)
-                            glitched_scene = cv2.merge((b_shifted, g, r_shifted))
+                            glitched_body = cv2.merge((b_shifted, g, r_shifted))
                             
-                            # Horizontal Interdimensional Shear Slicing
-                            num_slices = random.randint(8, 14)
+                            # Hard Axis Slice Shearing
+                            num_slices = random.randint(10, 16)
                             for _ in range(num_slices):
                                 slice_y = random.randint(0, h - 20)
-                                slice_h = random.randint(6, 22)
-                                slice_shift = random.randint(-40, 40)
-                                glitched_scene[slice_y:slice_y+slice_h, :] = np.roll(
-                                    glitched_scene[slice_y:slice_y+slice_h, :], slice_shift, axis=1
+                                slice_h = random.randint(6, 20)
+                                slice_shift = random.randint(-45, 45)
+                                glitched_body[slice_y:slice_y+slice_h, :] = np.roll(
+                                    glitched_body[slice_y:slice_y+slice_h, :], slice_shift, axis=1
                                 )
                             
-                            # Infuse Spider-Verse Tint Palette (Hot Magentas / Electric Purples)
-                            glitched_scene[:, :, 2] = cv2.add(glitched_scene[:, :, 2], 55)
-                            glitched_scene[:, :, 0] = cv2.add(glitched_scene[:, :, 0], 25)
+                            # Spiderverse Color Overdose (Magentas/Deep Indigos)
+                            glitched_body[:, :, 2] = cv2.add(glitched_body[:, :, 2], 60)
+                            glitched_body[:, :, 0] = cv2.add(glitched_body[:, :, 0], 30)
 
-                            # Patch out the object's background coordinates seamlessly
-                            clean_room_base = cv2.bitwise_and(glitched_scene, glitched_scene, mask=inv_mask)
-                            bg_patch = cv2.bitwise_and(self.locked_clean_bg, self.locked_clean_bg, mask=dynamic_mask)
-                            display_frame = cv2.add(clean_room_base, bg_patch)
+                            # RECONSTRUCT SCENE LAYER MATRIX:
+                            # 1. Start with the completely rock-solid clean background cache
+                            display_frame = self.locked_clean_bg.copy()
                             
-                            # 2. OBJECT PHYSICS LAYER
+                            # 2. Layer the live glitched body ONLY onto moving spatial coordinates
+                            display_frame[motion_mask > 0] = glitched_body[motion_mask > 0]
+                            
+                            # 3. Ensure the object's original location stays permanently patched out
+                            bg_patch = cv2.bitwise_and(self.locked_clean_bg, self.locked_clean_bg, mask=dynamic_mask)
+                            display_frame = cv2.add(cv2.bitwise_and(display_frame, display_frame, mask=inv_mask), bg_patch)
+                            
+                            # --- OBJECT PHYSICS CONTROLLER ---
                             if self.state == 1:
-                                # Slow, eerie zero-gravity climb
                                 self.float_y -= self.float_speed
                             elif self.state == 2:
-                                # Acceleration via downward gravity pull
                                 self.drop_velocity += self.gravity
                                 self.float_y += self.drop_velocity
                                 
-                                # Crash Check Reset
                                 if self.float_y >= 0:
                                     self.float_y = 0.0
                                     self.state = 0
@@ -212,34 +224,32 @@ class UnrealStudioContinuous:
                                     self.btn_hover.config(text="3. LAUNCH HOVER")
                                     self.status_var.set("CONSOLE // RE-STABILIZED. SYSTEM RESTORED.")
 
-                            # Compute relative floating layout positioning
                             current_y = oy + int(self.float_y)
                             
                             if current_y > 5 and (current_y + oh) < h:
                                 roi = display_frame[current_y:current_y+oh, ox:ox+ow]
                                 
-                                # Render ONLY the true object silhouette shape, no rectangular backgrounds!
+                                # High precision mask overlay - zero rectangles, pure item silhouette
                                 img_bg = cv2.bitwise_and(roi, roi, mask=cv2.bitwise_not(live_mask_crop))
                                 img_fg = cv2.bitwise_and(live_object_crop, live_object_crop, mask=live_mask_crop)
                                 
                                 display_frame[current_y:current_y+oh, ox:ox+ow] = cv2.add(img_bg, img_fg)
                         else:
-                            # Tracking Standby Hud Output (GrabCut Outline Check)
+                            # Setup HUD: Show precise GrabCut outer edge profile
                             contours, _ = cv2.findContours(dynamic_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
                             cv2.drawContours(display_frame, contours, -1, (255, 0, 128), 2, cv2.LINE_AA)
                 else:
                     self.status_var.set("CONSOLE // MATRIX BREACH: LOCK-ON DROP.")
 
-            # Spider-Verse Reality Anomaly Aesthetic Watermark
+            # UI Frame Sync Watermark
             if self.is_levitating and random.random() > 0.7:
-                # Intermittent flicker text overlay during breach state
                 cv2.putText(display_frame, "WARNING: MULTIVERSE COLLAPSE", (30, h - 30), 
-                            cv2.FONT_HERSHEY_TRIPLEX, 0.6, (0, 0, 255), 1, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_TRIPLEX, 0.55, (0, 0, 255), 1, cv2.LINE_AA)
             else:
                 cv2.putText(display_frame, "SYS_STATUS // PORTAL_STABLE", (30, h - 30), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
 
-            # Map to Tkinter Canvas Frame
+            # Map to Tkinter Canvas
             img = cv2.cvtColor(display_frame, cv2.COLOR_BGR2RGB)
             img = Image.fromarray(img)
             img_tk = ImageTk.PhotoImage(image=img)
