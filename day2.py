@@ -214,60 +214,64 @@ class UnrealStudioContinuous:
                         display_frame = cv2.add(display_frame, (220, 220, 220, 0))
                     self.status_var.set("CONSOLE // STAGE 3: EVACUATION VERIFIED. SYSTEM COOLDOWN LOOP.")
 
-                # --- PHASE 4: THE RAINBOW REGURGITATION SKY FALL (4.8s - 5.6s) ---
+                # --- PHASE 4: THE RAINBOW PORTAL REVERSE-SPIRAL LANDING (4.8s - 5.6s) ---
                 elif 4.8 <= elapsed < 5.6:
-                    # The room transitions immediately back to full normal color
-                    display_frame = frame.copy()
-                    
-                    # Track falling time index (from 0.0 to 1.0)
-                    time_in_phase = (elapsed - 4.8) / 0.8
-                    
-                    # FIX: Start with a negative offset so you fall FROM ABOVE the ceiling down to zero
-                    drop_distance = -int(h * math.pow(1.0 - time_in_phase, 2.5)) 
-                    
-                    # Establish the base world backdrop from the clean cached room template
+                    # Target room snaps completely back to normal
                     display_frame = self.locked_clean_bg.copy()
                     
-                    # --- RAINBOW SPECTRUM SEPARATION SPLIT ---
+                    time_in_phase = (elapsed - 4.8) / 0.8
+                    invert_progress = 1.0 - time_in_phase
+                    
+                    # --- REVERSE RADIAL UNWIND MESH MATH ---
+                    map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
+                    map_x = map_x.astype(np.float32)
+                    map_y = map_y.astype(np.float32)
+                    
+                    dx = map_x - p_cx
+                    dy = map_y - p_cy
+                    r_mesh = np.sqrt(dx**2 + dy**2)
+                    theta_mesh = np.arctan2(dy, dx)
+                    
+                    # Reverse pull multiplier drops sharply down to zero
+                    reverse_pull = math.pow(invert_progress, 2.5)
+                    
+                    # Forward scaling mapping matrix forces pixels to transition OUTWARD from the center point
+                    r_warped = r_mesh * (1.0 - (reverse_pull * np.exp(-r_mesh / 200.0)))
+                    # Rapid untwisting angle factor
+                    theta_warped = theta_mesh + (reverse_pull * 7.5 * np.exp(-r_mesh / 120.0))
+                    
+                    spawn_x = p_cx + r_warped * np.cos(theta_warped)
+                    spawn_y = p_cy + r_warped * np.sin(theta_warped)
+                    
+                    # --- LIQUID PRISM RAINBOW TRANSITION CHANNELS ---
                     fb, fg, fr = cv2.split(frame)
+                    rainbow_spread = int(40 * invert_progress)
                     
-                    # Draw separate channels with unique trailing displacements to generate a liquid spectrum spectrum
-                    rainbow_spread = int(45 * (1.0 - time_in_phase))
+                    # Offset channels inside the expansion lookup matrix to draw a rainbow burst tail
+                    fr = np.roll(fr, -rainbow_spread, axis=1)
+                    fb = np.roll(fb, rainbow_spread, axis=1)
+                    rainbow_src = cv2.merge((fb, fg, fr))
                     
-                    # Apply offset channels to match color prism refraction paths
-                    fr_shifted = np.zeros_like(fr)
-                    fg_shifted = np.zeros_like(fg)
-                    fb_shifted = np.zeros_like(fb)
+                    # Remap the colorful frame through the expanding spiral vectors
+                    regurgitated_body = cv2.remap(rainbow_src, spawn_x, spawn_y, cv2.INTER_LINEAR)
                     
-                    # Create translation offsets for each channel to paint a rainbow trail
-                    if drop_distance != 0:
-                        # Red drops slightly behind
-                        m_r = np.float32([[1, 0, rainbow_spread], [0, 1, drop_distance - rainbow_spread // 2]])
-                        # Green holds the center path
-                        m_g = np.float32([[1, 0, 0], [0, 1, drop_distance]])
-                        # Blue drops out in front
-                        m_b = np.float32([[1, 0, -rainbow_spread], [0, 1, drop_distance + rainbow_spread // 2]])
-                        
-                        fr_shifted = cv2.warpAffine(fr, m_r, (w, h))
-                        fg_shifted = cv2.warpAffine(fg, m_g, (w, h))
-                        fb_shifted = cv2.warpAffine(fb, m_b, (w, h))
-                        
-                        mask_shifted = cv2.warpAffine(motion_mask, m_g, (w, h))
-                        rainbow_body = cv2.merge((fb_shifted, fg_shifted, fr_shifted))
-                        
-                        display_frame[mask_shifted > 0] = rainbow_body[mask_shifted > 0]
-                    else:
-                        # Clean impact landing onto the chair
-                        display_frame[motion_mask > 0] = frame[motion_mask > 0]
-                        
-                    self.status_var.set("CONSOLE // PORTAL SPLIT: REGURGITATING SEGMENTS IN COLOR CANVAS.")
+                    # Render the active spawning portal rings directly under the player footprint
+                    portal_radius = int(140 * invert_progress)
+                    if portal_radius > 5:
+                        for ro in range(portal_radius, 0, -10):
+                            cv2.ellipse(display_frame, (p_cx, p_cy), (ro, int(ro*0.75)), 
+                                        int(time.time()*-280)%360, 0, 360, (0, 240, 255) if ro % 20 == 0 else (255, 0, 130), -1, cv2.LINE_AA)
+                    
+                    # Stencil the expanding rainbow body strictly over the room mask canvas
+                    display_frame[motion_mask > 0] = regurgitated_body[motion_mask > 0]
+                    self.status_var.set("CONSOLE // PHASE 4: REVERSE SPIRAL RE-ENTRY ACTIVE.")
 
-                # --- PHASE 5: COMPLETE RAW ENVIRONMENT RESTORATION (5.6s+) ---
+                # --- PHASE 5: STABLE ENVIRONMENT OVERVIEW (5.6s+) ---
                 else:
                     display_frame = frame.copy() 
                     self.state = 0
                     self.portal_particles = []
-                    self.status_var.set("CONSOLE // STAGE 5: RETURN MET. STABLE TIMELINE RESTORED.")
+                    self.status_var.set("CONSOLE // STAGE 5: TARGET MULTIVERSE REACHED.")
 
                 cv2.putText(display_frame, f"WARP_TIME: {elapsed:.2f}s", (30, h - 30), 
                             cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 255), 1, cv2.LINE_AA)
