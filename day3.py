@@ -25,18 +25,16 @@ options = HandLandmarkerOptions(
 )
 
 # --- LIGHTSABER CONFIGURATION & STATES ---
-saber_on = False        # Is the saber supposed to be active?
-ready_for_toggle = True  # Prevents rapid flickering while holding the gesture
 current_growth = 0.0     # Percentage of extension (0.0 to 1.0)
 speed = 0.08             # Growth animation step size per frame
-blade_color = (255, 0, 0) # BGR Format: Vibrant Blue (Change to (0, 0, 255) for Sith Red!)
+blade_color = (255, 0, 0) # BGR Format: Vibrant Blue
 
 cap = cv2.VideoCapture(0)
 
 print("\n=======================================================")
-print("FLASH A QUICK THUMBS UP TO TOGGLE THE SABER ON / OFF")
-print("Once ignited, hold your fist closed and swing it around!")
-print("Press 'q' to exit the engine.")
+print("GROW ALONG THE FIST PIPELINE LIVE")
+print("Close your fist to ignite the blade out of your index knuckle!")
+print("Press 'q' to exit.")
 print("=======================================================\n")
 
 with HandLandmarker.create_from_options(options) as landmarker:
@@ -45,7 +43,6 @@ with HandLandmarker.create_from_options(options) as landmarker:
         if not success:
             continue
 
-        # Mirror the frame horizontally for natural orientation
         frame = cv2.flip(frame, 1)
         h, w, c = frame.shape
         
@@ -62,86 +59,79 @@ with HandLandmarker.create_from_options(options) as landmarker:
 
         if detection_result.hand_landmarks:
             for hand_landmarks in detection_result.hand_landmarks:
-                # Core Hilt Anchors
-                wrist = hand_landmarks[0]          # Base of the grip
-                knuckle = hand_landmarks[5]        # Top of the grip (where blade emits)
-
-                # Finger Tracking Anchors for Gestures
-                thumb_tip = hand_landmarks[4]
+                # Pinky to Index Knuckle tracking anchors
+                index_k = hand_landmarks[5]        # Index Knuckle (Red Dot)
+                pinky_k = hand_landmarks[17]       # Pinky Knuckle (Green Dot)
+                
+                # Finger tracking anchors for the grip detection
                 index_tip = hand_landmarks[8]
                 index_pip = hand_landmarks[6]
                 middle_tip = hand_landmarks[12]
                 middle_pip = hand_landmarks[10]
 
                 # Convert normalized positions into screen pixel space
-                x1, y1 = int(wrist.x * w), int(wrist.y * h)
-                x2, y2 = int(knuckle.x * w), int(knuckle.y * h)
+                ix, iy = int(index_k.x * w), int(index_k.y * h)
+                px, py = int(pinky_k.x * w), int(pinky_k.y * h)
 
-                # --- 1. THE THUMBS-UP TOGGLE LATCH ---
-                # Curl check: Are the main fingers curled into the palm?
-                fingers_curled = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
-                # Position check: Is the thumb sticking upwards relative to the hand knuckle?
-                thumb_up = thumb_tip.y < knuckle.y 
+                # --- TRIGGER LOGIC ---
+                hand_is_closed = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
 
-                # Handle the switch logic
-                if thumb_up and fingers_curled:
-                    if ready_for_toggle:
-                        saber_on = not saber_on    # Invert state (True becomes False, vice versa)
-                        ready_for_toggle = False   # Lock the trigger
-                else:
-                    ready_for_toggle = True        # Unlock once hand moves away from gesture
-
-                # --- 2. SMOOTH LERP GROWTH ENGINE ---
-                if saber_on:
+                if hand_is_closed:
                     current_growth = min(1.0, current_growth + speed)
                 else:
                     current_growth = max(0.0, current_growth - speed)
 
-                # --- 3. DIRECTIONAL VECTOR MATH (3D SPACE PROJECTION) ---
-                vx = x2 - x1
-                vy = y2 - y1
+                # --- GROW ALONG THE FIST DIRECTION MATH ---
+                # Vector running straight from pinky (green) to index (red)
+                vx = ix - px
+                y_vector = iy - py
                 
-                # Calculate coordinates where the blade tip terminates based on current growth
-                target_x = int(x2 + vx * 3.5 * current_growth)
-                target_y = int(y2 + vy * 3.5 * current_growth)
+                # Normalize the vector so tilt/distance doesn't change the final blade length
+                magnitude = np.sqrt(vx**2 + y_vector**2)
+                if magnitude > 0:
+                    vx /= magnitude
+                    y_vector /= magnitude
 
-                # --- 4. MULTI-PASS GEOMETRIC DRAWING ---
+                # Base of the saber is now anchored directly at the index knuckle (red dot)
+                cx, cy = ix, iy
+                
+                # Scale the blade relative to screen height
+                scale_factor = (h * 0.65) * current_growth
+                
+                # Project the blade tip straight out along your fist's alignment
+                target_x = int(cx + vx * scale_factor)
+                target_y = int(cy + y_vector * scale_factor)
+
+                # --- MULTI-PASS GEOMETRIC DRAWING ---
                 if current_growth > 0:
-                    # Scale factor adjusts line thickness dynamically using Z depth estimation
-                    z_scale = 1.0 + abs(wrist.z)
+                    z_scale = 1.0 + abs(index_k.z)
                     
-                    # Pass A: Thick glow outline profile
-                    cv2.line(glow_mask, (x2, y2), (target_x, target_y), blade_color, int(28 * z_scale), cv2.LINE_AA)
+                    # Pass A: Thick outer neon glow profile
+                    cv2.line(glow_mask, (cx, cy), (target_x, target_y), blade_color, int(28 * z_scale), cv2.LINE_AA)
                     
-                    # Pass B: Secondary mid-tier core glow line
-                    cv2.line(glow_mask, (x2, y2), (target_x, target_y), blade_color, int(12 * z_scale), cv2.LINE_AA)
+                    # Pass B: Secondary mid-tier intensive core glow
+                    cv2.line(glow_mask, (cx, cy), (target_x, target_y), blade_color, int(12 * z_scale), cv2.LINE_AA)
                     
-                    # Pass C: Intense White Plasma Core line
-                    cv2.line(core_mask, (x2, y2), (target_x, target_y), (255, 255, 255), int(6 * z_scale), cv2.LINE_AA)
+                    # Pass C: Luminous White Core Line
+                    cv2.line(core_mask, (cx, cy), (target_x, target_y), (255, 255, 255), int(6 * z_scale), cv2.LINE_AA)
 
-                # Optional: Overlay physical interface indicators
-                cv2.circle(frame, (x1, y1), 8, (0, 255, 0), cv2.FILLED)  # Green Wrist dot
-                cv2.circle(frame, (x2, y2), 8, (0, 0, 255), cv2.FILLED)  # Red Knuckle dot
+                # Overlay interface lines to visualize your knuckle tracking axis
+                cv2.circle(frame, (ix, iy), 6, (0, 0, 255), cv2.FILLED)  # Red Index Knuckle
+                cv2.circle(frame, (px, py), 6, (0, 255, 0), cv2.FILLED)  # Green Pinky Knuckle
+                cv2.line(frame, (ix, iy), (px, py), (0, 255, 255), 2)    # Yellow Knuckle Line
 
-        # --- 5. IMAGE PROCESSING BLENDING COMPOSITE ---
-        # Blur the colored mask passes heavily using a spatial Gaussian filter
+        # --- IMAGE PROCESSING BLENDING COMPOSITE ---
         glow_blur = cv2.GaussianBlur(glow_mask, (35, 35), 0)
-        
-        # Additively merge the diffuse colored blur with the solid white core mask
         saber_composite = cv2.addWeighted(glow_blur, 1.0, core_mask, 1.0, 0)
-        
-        # Add the completed saber rendering right on top of your live webcam frame
         frame = cv2.add(frame, saber_composite)
 
-        # UI Text Overlays
-        status_text = "IGNITED" if saber_on else "RETRACTED"
+        # UI State Overlay Text
+        status_text = "IGNITED" if current_growth > 0.3 else "RETRACTED"
         cv2.putText(frame, f"Saber Control: {status_text}", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        # Render output stream window
         cv2.imshow("Day 3 Challenge: Real-Time Lightsaber Engine", frame)
 
-        # Drop cleanly if 'q' is hit
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
