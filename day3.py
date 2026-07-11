@@ -10,11 +10,10 @@ UDP_IP = "127.0.0.1"
 UDP_PORT = 5005
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-# --- CORRECTED MODERN TASKS MODELS ---
+# --- MODERN TASKS MODELS ---
 model_hand = "hand_landmarker.task"
 model_pose = "pose_landmarker.task"
 
-# Auto-download modern models with corrected structural paths
 if not os.path.exists(model_hand):
     print("Downloading Hand Landmarker...")
     urllib.request.urlretrieve("https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task", model_hand)
@@ -22,7 +21,6 @@ if not os.path.exists(model_hand):
 if not os.path.exists(model_pose):
     print("Downloading Pose Landmarker (Full)...")
     urllib.request.urlretrieve("https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task", model_pose)
-    print("Download complete!")
 
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
@@ -34,23 +32,26 @@ VisionRunningMode = mp.tasks.vision.RunningMode
 hand_options = HandLandmarkerOptions(base_options=BaseOptions(model_asset_path=model_hand), running_mode=VisionRunningMode.VIDEO, num_hands=1)
 pose_options = PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=model_pose), running_mode=VisionRunningMode.VIDEO)
 
-# --- LIGHTSABER & SMOOTHING CONFIG ---
+# --- LIGHTSABER CONFIGURATION ---
 current_growth = 0.0     
 speed = 0.08             
-blade_color = (255, 0, 0) # BGR: Vibrant Blue
+blade_color = (255, 0, 0) # BGR: Blue
 
-smooth_cx, smooth_cy = 0, 0
-smooth_vx, smooth_vy = 0, 0
-smooth_z = 0.0
-alpha = 0.25  
+# --- 3D TEMPORAL SMOOTHING STATE TRACKERS ---
+smooth_hx, smooth_hy = 0.0, 0.0
+smooth_tx, smooth_ty = 0.0, 0.0
+smooth_z_scale = 1.0
+alpha = 0.20  
 first_frame = True
+hand_seen = False  
+
+# Estimated stable baseline shoulder width in pixels
+BASE_SHOULDER_WIDTH = 200.0
+
+# Dynamic Calibration Tracker to store the maximum flat knuckle distance detected
+max_knuckle_reference_dist = 1.0
 
 cap = cv2.VideoCapture(0)
-
-print("\n=======================================================")
-print("MODERN 3D HOLISTIC (POSE + HAND) LIGHTSABER ENGINE LIVE")
-print(f"Streaming data to -> {UDP_IP}:{UDP_PORT}")
-print("=======================================================\n")
 
 with HandLandmarker.create_from_options(hand_options) as hand_detector, \
      PoseLandmarker.create_from_options(pose_options) as pose_detector:
@@ -69,119 +70,159 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
         
-        # Run modern parallel inference passes
         pose_result = pose_detector.detect_for_video(mp_image, timestamp_ms)
         hand_result = hand_detector.detect_for_video(mp_image, timestamp_ms)
 
-        # --- 1. FIXED ROOM DEPTH & UPPER BODY ORIENTATION ---
+        # Torso Horizon Tracker
         body_dir = "No Body Detected"
-        shoulder_dist_px = 0
+        shoulder_dist_px = int(BASE_SHOULDER_WIDTH)
         
         if pose_result and pose_result.pose_landmarks:
             for pose_landmarks in pose_result.pose_landmarks:
-                # Landmark 11 = Left Shoulder, Landmark 12 = Right Shoulder
                 l_shoulder = pose_landmarks[11]
                 r_shoulder = pose_landmarks[12]
-                
-                # Convert normalized coordinates into screen pixel integers
                 ls_x, ls_y = int(l_shoulder.x * w), int(l_shoulder.y * h)
                 rs_x, rs_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
-                
-                # Draw structural tracking lines for your upper frame
-                cv2.line(frame, (ls_x, ls_y), (rs_x, rs_y), (0, 255, 255), 3)
-                cv2.circle(frame, (ls_x, ls_y), 6, (255, 255, 0), cv2.FILLED)
-                cv2.circle(frame, (rs_x, rs_y), 6, (255, 255, 0), cv2.FILLED)
-
-                # Calculate screen distance to check if you are moving closer/further
+                cv2.line(frame, (ls_x, ls_y), (rs_x, rs_y), (0, 255, 255), 2)
                 shoulder_dist_px = int(np.sqrt((rs_x - ls_x)**2 + (rs_y - ls_y)**2))
+                
+                if (r_shoulder.z - l_shoulder.z) > 0.03: body_dir = "Facing Left"
+                elif (r_shoulder.z - l_shoulder.z) < -0.03: body_dir = "Facing Right"
+                else: body_dir = "Facing Forward"
 
-                # Room depth orientation tracking via Z value deltas
-                shoulder_depth_delta = r_shoulder.z - l_shoulder.z
-                if shoulder_depth_delta > 0.03:
-                    body_dir = "Facing Left"
-                elif shoulder_depth_delta < -0.03:
-                    body_dir = "Facing Right"
-                else:
-                    body_dir = "Facing Forward"
+        # General Z-depth scaling based on body distance
+        target_z_scale = max(0.3, min(2.5, shoulder_dist_px / BASE_SHOULDER_WIDTH))
 
-        # --- 2. HAND TRACKING & SABER GRAPHICS PIPELINE ---
+        # 3D Spatial Pipeline
         if hand_result and hand_result.hand_landmarks:
+            hand_seen = True
             for hand_landmarks in hand_result.hand_landmarks:
-                index_k = hand_landmarks[5]        # Red Dot
-                pinky_k = hand_landmarks[17]       # Green Dot
+                wrist = hand_landmarks[0]
+                index_k = hand_landmarks[5]        
+                pinky_k = hand_landmarks[17]       
                 index_tip, index_pip = hand_landmarks[8], hand_landmarks[6]
                 middle_tip, middle_pip = hand_landmarks[12], hand_landmarks[10]
 
-                ix, iy = int(index_k.x * w), int(index_k.y * h)
-                px, py = int(pinky_k.x * w), int(pinky_k.y * h)
-
-                # Grip logic trigger
                 hand_is_closed = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
-                if hand_is_closed:
-                    current_growth = min(1.0, current_growth + speed)
+                current_growth = min(1.0, current_growth + speed) if hand_is_closed else max(0.0, current_growth - speed)
+
+                # Anchor hilt to index knuckle base
+                hx_raw = index_k.x * w
+                hy_raw = index_k.y * h
+
+                # --- 1. DIRECT VECTOR MATCH ALONG THE KNUCKLE AXIS ---
+                v3d_x = index_k.x - pinky_k.x
+                v3d_y = index_k.y - pinky_k.y
+
+                # Calculate the raw distance between knuckles in pixel space
+                ix_px, iy_px = index_k.x * w, index_k.y * h
+                px_px, py_px = pinky_k.x * w, pinky_k.y * h
+                current_knuckle_dist = np.sqrt((ix_px - px_px)**2 + (iy_px - py_px)**2)
+
+                # Dynamically catch the maximum flat tracking distance to create a reference scale
+                if current_knuckle_dist > max_knuckle_reference_dist:
+                    max_knuckle_reference_dist = current_knuckle_dist
+
+                # --- 2. PERSPECTIVE FORESHORTENING CONTROLLER ---
+                # Calculate compression ratio factor (0.0 -> 1.0)
+                foreshortening_factor = max(0.15, min(1.0, current_knuckle_dist / max_knuckle_reference_dist))
+
+                mag_2d = np.sqrt(v3d_x**2 + v3d_y**2)
+                if mag_2d > 0:
+                    v3d_x, v3d_y = v3d_x / mag_2d, v3d_y / mag_2d
                 else:
-                    current_growth = max(0.0, current_growth - speed)
+                    v3d_x, v3d_y = 0, -1
 
-                # Get raw spatial frames
-                raw_vx, raw_vy = ix - px, iy - py
-                raw_cx, raw_cy = ix, iy
-                raw_z = index_k.z  
+                # Length is directly proportional to the knuckle distance compression ratio factor
+                raw_blade_len_px = h * 0.65 * current_growth * target_z_scale * foreshortening_factor
+                tx_raw = hx_raw + (v3d_x * raw_blade_len_px)
+                ty_raw = hy_raw + (v3d_y * raw_blade_len_px)
 
-                # Temporal signal damping
+                # Damping smooth filter pass
                 if first_frame:
-                    smooth_cx, smooth_cy = raw_cx, raw_cy
-                    smooth_vx, smooth_vy = raw_vx, raw_vy
-                    smooth_z = raw_z
+                    smooth_hx, smooth_hy = hx_raw, hy_raw
+                    smooth_tx, smooth_ty = tx_raw, ty_raw
+                    smooth_z_scale = target_z_scale
                     first_frame = False
                 else:
-                    smooth_cx = int(smooth_cx * (1 - alpha) + raw_cx * alpha)
-                    smooth_cy = int(smooth_cy * (1 - alpha) + raw_cy * alpha)
-                    smooth_vx = smooth_vx * (1 - alpha) + raw_vx * alpha
-                    smooth_vy = smooth_vy * (1 - alpha) + raw_vy * alpha
-                    smooth_z = smooth_z * (1 - alpha) + raw_z * alpha
+                    smooth_hx = smooth_hx * (1 - alpha) + hx_raw * alpha
+                    smooth_hy = smooth_hy * (1 - alpha) + hy_raw * alpha
+                    smooth_tx = smooth_tx * (1 - alpha) + tx_raw * alpha
+                    smooth_ty = smooth_ty * (1 - alpha) + ty_raw * alpha
+                    smooth_z_scale = smooth_z_scale * (1 - alpha) + target_z_scale * alpha
 
-                magnitude = np.sqrt(smooth_vx**2 + smooth_vy**2)
-                if magnitude > 0:
-                    normalized_vx, normalized_vy = smooth_vx / magnitude, smooth_vy / magnitude
-                else:
-                    normalized_vx, normalized_vy = 0, -1
-
-                # Spatial Perspective Scaling Formula (Adjusts length via Z coordinate depth)
-                scale_factor = (h * 0.65) * (1.0 - (smooth_z * 2.0)) * current_growth
-                target_x = int(smooth_cx + normalized_vx * scale_factor)
-                target_y = int(smooth_cy + normalized_vy * scale_factor)
-
-                # Render Blade Geometry
-                if current_growth > 0:
-                    z_thickness = max(0.5, 1.0 - smooth_z)
-                    cv2.line(glow_mask, (smooth_cx, smooth_cy), (target_x, target_y), blade_color, int(28 * z_thickness), cv2.LINE_AA)
-                    cv2.line(glow_mask, (smooth_cx, smooth_cy), (target_x, target_y), blade_color, int(12 * z_thickness), cv2.LINE_AA)
-                    cv2.line(core_mask, (smooth_cx, smooth_cy), (target_x, target_y), (255, 255, 255), int(6 * z_thickness), cv2.LINE_AA)
-
-                # Hilt diagnostic lines
-                cv2.circle(frame, (ix, iy), 6, (0, 0, 255), cv2.FILLED)  
-                cv2.circle(frame, (px, py), 6, (0, 255, 0), cv2.FILLED)  
-                cv2.line(frame, (ix, iy), (px, py), (0, 255, 255), 2)    
-
-                # Net data frame streaming package (Appends shoulder tracking metrics to string)
-                data_string = f"{smooth_cx},{smooth_cy},{round(smooth_z, 4)},{round(current_growth, 2)},{shoulder_dist_px}"
+                # Package safe data to transmit over network stack
+                data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
                 sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
-                cv2.putText(frame, f"Stream Data: {data_string}", (20, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        else:
-            first_frame = True
-            # Send default string if hand tracking parameters vanish
-            sock.sendto(f"0,0,0,0.0,{shoulder_dist_px}".encode(), (UDP_IP, UDP_PORT))
 
-        # --- 3. GRAPHICS BLENDING ENGINE ---
+                # Diagnostic tracking anchors
+                cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 6, (255, 0, 0), cv2.FILLED) # Blue Wrist
+                cv2.circle(frame, (int(hx_raw), int(hy_raw)), 6, (0, 0, 255), cv2.FILLED)          # Red Index Knuckle
+                cv2.circle(frame, (int(pinky_k.x * w), int(pinky_k.y * h)), 6, (0, 255, 0), cv2.FILLED) # Green Pinky Knuckle
+                cv2.line(frame, (int(hx_raw), int(hy_raw)), (int(pinky_k.x * w), int(pinky_k.y * h)), (0, 255, 255), 2)
+                cv2.line(frame, (int(wrist.x * w), int(wrist.y * h)), (int(hx_raw), int(hy_raw)), (255, 255, 255), 2)
+        else:
+            current_growth = max(0.0, current_growth - speed)
+            
+            v_dx = smooth_tx - smooth_hx
+            v_dy = smooth_ty - smooth_hy
+            mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+            if mag_smooth > 0:
+                v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+            else:
+                v_dx, v_dy = 0, -1
+            
+            decayed_len = h * 0.65 * current_growth * smooth_z_scale
+            smooth_tx = smooth_hx + (v_dx * decayed_len)
+            smooth_ty = smooth_hy + (v_dy * decayed_len)
+            
+            data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
+            sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
+
+        # --- INTEGRATED VOLUMETRIC RENDERING ---
+        if hand_seen and current_growth > 0:
+            num_segments = 12
+            projected_points = []
+            radii = []
+
+            v_dx = smooth_tx - smooth_hx
+            v_dy = smooth_ty - smooth_hy
+            mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+            
+            if mag_smooth > 0:
+                v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+            else:
+                v_dx, v_dy = 0, -1
+
+            # Match total rendering vector calculation to the smoothed outputs
+            total_len = np.sqrt((smooth_tx - smooth_hx)**2 + (smooth_ty - smooth_hy)**2)
+
+            for i in range(num_segments + 1):
+                step = (i / num_segments) * total_len
+                
+                scr_x = int(smooth_hx + v_dx * step)
+                scr_y = int(smooth_hy + v_dy * step)
+                projected_points.append((scr_x, scr_y))
+                
+                taper_factor = 1.0 - (i / num_segments) * 0.4
+                seg_rad = int(14 * smooth_z_scale * taper_factor)
+                radii.append(max(2, seg_rad))
+
+            for i in range(num_segments):
+                pt1 = projected_points[i]
+                pt2 = projected_points[i+1]
+                rad = radii[i]
+                
+                cv2.line(glow_mask, pt1, pt2, blade_color, rad * 2, cv2.LINE_AA)
+                cv2.line(core_mask, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_AA)
+
+        # Composite Blending
         glow_blur = cv2.GaussianBlur(glow_mask, (35, 35), 0)
         saber_composite = cv2.addWeighted(glow_blur, 1.0, core_mask, 1.0, 0)
         frame = cv2.add(frame, saber_composite)
 
-        # Dashboard Text HUD readouts
-        cv2.putText(frame, f"Saber: {'IGNITED' if current_growth > 0.3 else 'RETRACTED'}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-        cv2.putText(frame, f"Room Tracking: {body_dir}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-
-        cv2.imshow("Day 3 Challenge: Modern Tracking Engine", frame)
+        cv2.putText(frame, f"Room Alignment: {body_dir}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        cv2.imshow("Day 3: True 3D Space Projection Pipeline", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
