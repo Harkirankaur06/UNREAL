@@ -36,6 +36,7 @@ pose_options = PoseLandmarkerOptions(base_options=BaseOptions(model_asset_path=m
 current_growth = 0.0     
 speed = 0.08             
 blade_color = (255, 0, 0) # BGR: Blue
+saber_ignited = False     
 
 # --- 3D TEMPORAL SMOOTHING STATE TRACKERS ---
 smooth_hx, smooth_hy = 0.0, 0.0
@@ -45,13 +46,15 @@ alpha = 0.20
 first_frame = True
 hand_seen = False  
 
-# Estimated stable baseline shoulder width in pixels
 BASE_SHOULDER_WIDTH = 200.0
-
-# Dynamic Calibration Tracker to store the maximum flat knuckle distance detected
 max_knuckle_reference_dist = 1.0
 
+# NEW: Dynamic Tracking Variables for Overlap Analysis
+overlap_state = "Normal"
+
 cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
 
 with HandLandmarker.create_from_options(hand_options) as hand_detector, \
      PoseLandmarker.create_from_options(pose_options) as pose_detector:
@@ -90,7 +93,6 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
                 elif (r_shoulder.z - l_shoulder.z) < -0.03: body_dir = "Facing Right"
                 else: body_dir = "Facing Forward"
 
-        # General Z-depth scaling based on body distance
         target_z_scale = max(0.3, min(2.5, shoulder_dist_px / BASE_SHOULDER_WIDTH))
 
         # 3D Spatial Pipeline
@@ -104,28 +106,38 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
                 middle_tip, middle_pip = hand_landmarks[12], hand_landmarks[10]
 
                 hand_is_closed = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
-                current_growth = min(1.0, current_growth + speed) if hand_is_closed else max(0.0, current_growth - speed)
+                saber_ignited = True if hand_is_closed else False
 
-                # Anchor hilt to index knuckle base
                 hx_raw = index_k.x * w
                 hy_raw = index_k.y * h
 
-                # --- 1. DIRECT VECTOR MATCH ALONG THE KNUCKLE AXIS ---
-                v3d_x = index_k.x - pinky_k.x
-                v3d_y = index_k.y - pinky_k.y
-
-                # Calculate the raw distance between knuckles in pixel space
+                # Knuckle screen distances
                 ix_px, iy_px = index_k.x * w, index_k.y * h
                 px_px, py_px = pinky_k.x * w, pinky_k.y * h
                 current_knuckle_dist = np.sqrt((ix_px - px_px)**2 + (iy_px - py_px)**2)
 
-                # Dynamically catch the maximum flat tracking distance to create a reference scale
                 if current_knuckle_dist > max_knuckle_reference_dist:
                     max_knuckle_reference_dist = current_knuckle_dist
 
-                # --- 2. PERSPECTIVE FORESHORTENING CONTROLLER ---
-                # Calculate compression ratio factor (0.0 -> 1.0)
                 foreshortening_factor = max(0.15, min(1.0, current_knuckle_dist / max_knuckle_reference_dist))
+
+                # --- NEW: CORE OVERLAP LOGIC HANDLING ---
+                # Detect structural proximity on the 2D plane (Overlap Check)
+                is_overlapping = current_knuckle_dist < 18.0  # Threshold gap in pixels
+
+                if is_overlapping:
+                    if pinky_k.z < index_k.z:
+                        # Green is closer to the screen than Red
+                        overlap_state = "Green Overlaps Red"
+                    else:
+                        # Red is closer to the screen than Green
+                        overlap_state = "Red Overlaps Green"
+                else:
+                    overlap_state = "Normal"
+
+                # Knuckle Vector direction mapping
+                v3d_x = index_k.x - pinky_k.x
+                v3d_y = index_k.y - pinky_k.y
 
                 mag_2d = np.sqrt(v3d_x**2 + v3d_y**2)
                 if mag_2d > 0:
@@ -133,12 +145,12 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
                 else:
                     v3d_x, v3d_y = 0, -1
 
-                # Length is directly proportional to the knuckle distance compression ratio factor
+                current_growth = min(1.0, current_growth + speed) if saber_ignited else max(0.0, current_growth - speed)
+
                 raw_blade_len_px = h * 0.65 * current_growth * target_z_scale * foreshortening_factor
                 tx_raw = hx_raw + (v3d_x * raw_blade_len_px)
                 ty_raw = hy_raw + (v3d_y * raw_blade_len_px)
 
-                # Damping smooth filter pass
                 if first_frame:
                     smooth_hx, smooth_hy = hx_raw, hy_raw
                     smooth_tx, smooth_ty = tx_raw, ty_raw
@@ -151,19 +163,18 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
                     smooth_ty = smooth_ty * (1 - alpha) + ty_raw * alpha
                     smooth_z_scale = smooth_z_scale * (1 - alpha) + target_z_scale * alpha
 
-                # Package safe data to transmit over network stack
                 data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
                 sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
 
-                # Diagnostic tracking anchors
-                cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 6, (255, 0, 0), cv2.FILLED) # Blue Wrist
-                cv2.circle(frame, (int(hx_raw), int(hy_raw)), 6, (0, 0, 255), cv2.FILLED)          # Red Index Knuckle
-                cv2.circle(frame, (int(pinky_k.x * w), int(pinky_k.y * h)), 6, (0, 255, 0), cv2.FILLED) # Green Pinky Knuckle
+                # Diagnostic overlays
+                cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 6, (255, 0, 0), cv2.FILLED) 
+                cv2.circle(frame, (int(hx_raw), int(hy_raw)), 6, (0, 0, 255), cv2.FILLED)          
+                cv2.circle(frame, (int(pinky_k.x * w), int(pinky_k.y * h)), 6, (0, 255, 0), cv2.FILLED) 
                 cv2.line(frame, (int(hx_raw), int(hy_raw)), (int(pinky_k.x * w), int(pinky_k.y * h)), (0, 255, 255), 2)
                 cv2.line(frame, (int(wrist.x * w), int(wrist.y * h)), (int(hx_raw), int(hy_raw)), (255, 255, 255), 2)
         else:
-            current_growth = max(0.0, current_growth - speed)
-            
+            if not saber_ignited:
+                current_growth = max(0.0, current_growth - speed)
             v_dx = smooth_tx - smooth_hx
             v_dy = smooth_ty - smooth_hy
             mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
@@ -179,49 +190,61 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
             data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
             sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
 
-        # --- INTEGRATED VOLUMETRIC RENDERING ---
+        # --- CONDITION-BASED VOLUMETRIC RENDERING ---
         if hand_seen and current_growth > 0:
-            num_segments = 12
-            projected_points = []
-            radii = []
+            # Condition 1: Green overlaps Red -> Completely skip rendering loop to hide saber
+            if overlap_state == "Green Overlaps Red":
+                pass 
+                
+            # Condition 2: Red overlaps Green -> Render as a singular concentrated dot point
+            elif overlap_state == "Red Overlaps Green":
+                dot_radius = int(18 * smooth_z_scale)
+                cv2.circle(glow_mask, (int(smooth_hx), int(smooth_hy)), dot_radius * 2, blade_color, -1, cv2.LINE_AA)
+                cv2.circle(core_mask, (int(smooth_hx), int(smooth_hy)), int(dot_radius * 0.4), (255, 255, 255), -1, cv2.LINE_AA)
 
-            v_dx = smooth_tx - smooth_hx
-            v_dy = smooth_ty - smooth_hy
-            mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
-            
-            if mag_smooth > 0:
-                v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+            # Condition 3: Normal state -> Render full volumetric 12-segment geometry
             else:
-                v_dx, v_dy = 0, -1
+                num_segments = 12
+                projected_points = []
+                radii = []
 
-            # Match total rendering vector calculation to the smoothed outputs
-            total_len = np.sqrt((smooth_tx - smooth_hx)**2 + (smooth_ty - smooth_hy)**2)
+                v_dx = smooth_tx - smooth_hx
+                v_dy = smooth_ty - smooth_hy
+                mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+                if mag_smooth > 0:
+                    v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+                else:
+                    v_dx, v_dy = 0, -1
 
-            for i in range(num_segments + 1):
-                step = (i / num_segments) * total_len
-                
-                scr_x = int(smooth_hx + v_dx * step)
-                scr_y = int(smooth_hy + v_dy * step)
-                projected_points.append((scr_x, scr_y))
-                
-                taper_factor = 1.0 - (i / num_segments) * 0.4
-                seg_rad = int(14 * smooth_z_scale * taper_factor)
-                radii.append(max(2, seg_rad))
+                total_len = np.sqrt((smooth_tx - smooth_hx)**2 + (smooth_ty - smooth_hy)**2)
 
-            for i in range(num_segments):
-                pt1 = projected_points[i]
-                pt2 = projected_points[i+1]
-                rad = radii[i]
-                
-                cv2.line(glow_mask, pt1, pt2, blade_color, rad * 2, cv2.LINE_AA)
-                cv2.line(core_mask, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_AA)
+                for i in range(num_segments + 1):
+                    step = (i / num_segments) * total_len
+                    scr_x = int(smooth_hx + v_dx * step)
+                    scr_y = int(smooth_hy + v_dy * step)
+                    projected_points.append((scr_x, scr_y))
+                    
+                    taper_factor = 1.0 - (i / num_segments) * 0.4
+                    seg_rad = int(14 * smooth_z_scale * taper_factor)
+                    radii.append(max(2, seg_rad))
 
-        # Composite Blending
-        glow_blur = cv2.GaussianBlur(glow_mask, (35, 35), 0)
-        saber_composite = cv2.addWeighted(glow_blur, 1.0, core_mask, 1.0, 0)
-        frame = cv2.add(frame, saber_composite)
+                for i in range(num_segments):
+                    pt1 = projected_points[i]
+                    pt2 = projected_points[i+1]
+                    rad = radii[i]
+                    cv2.line(glow_mask, pt1, pt2, blade_color, rad * 2, cv2.LINE_AA)
+                    cv2.line(core_mask, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_AA)
 
-        cv2.putText(frame, f"Room Alignment: {body_dir}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+            # High-Speed downscaled Glow Shader step integration
+            small_glow = cv2.resize(glow_mask, (w // 4, h // 4), interpolation=cv2.INTER_LINEAR)
+            small_blur = cv2.GaussianBlur(small_glow, (9, 9), 0)
+            glow_blur = cv2.resize(small_blur, (w, h), interpolation=cv2.INTER_LINEAR)
+            
+            saber_composite = cv2.addWeighted(glow_blur, 1.0, core_mask, 1.0, 0)
+            frame = cv2.add(frame, saber_composite)
+
+        # Performance State Readouts
+        cv2.putText(frame, f"Overlap State: {overlap_state}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
         cv2.imshow("Day 3: True 3D Space Projection Pipeline", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
 
