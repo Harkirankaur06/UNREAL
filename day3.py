@@ -48,8 +48,6 @@ hand_seen = False
 
 BASE_SHOULDER_WIDTH = 200.0
 max_knuckle_reference_dist = 1.0
-
-# NEW: Dynamic Tracking Variables for Overlap Analysis
 overlap_state = "Normal"
 
 cap = cv2.VideoCapture(0)
@@ -65,9 +63,6 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
 
         frame = cv2.flip(frame, 1)
         h, w, c = frame.shape
-        
-        glow_mask = np.zeros((h, w, 3), dtype=np.uint8)
-        core_mask = np.zeros((h, w, 3), dtype=np.uint8)
         
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
@@ -111,7 +106,6 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
                 hx_raw = index_k.x * w
                 hy_raw = index_k.y * h
 
-                # Knuckle screen distances
                 ix_px, iy_px = index_k.x * w, index_k.y * h
                 px_px, py_px = pinky_k.x * w, pinky_k.y * h
                 current_knuckle_dist = np.sqrt((ix_px - px_px)**2 + (iy_px - py_px)**2)
@@ -121,21 +115,16 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
 
                 foreshortening_factor = max(0.15, min(1.0, current_knuckle_dist / max_knuckle_reference_dist))
 
-                # --- NEW: CORE OVERLAP LOGIC HANDLING ---
-                # Detect structural proximity on the 2D plane (Overlap Check)
-                is_overlapping = current_knuckle_dist < 18.0  # Threshold gap in pixels
+                is_overlapping = current_knuckle_dist < 18.0  
 
                 if is_overlapping:
                     if pinky_k.z < index_k.z:
-                        # Green is closer to the screen than Red
                         overlap_state = "Green Overlaps Red"
                     else:
-                        # Red is closer to the screen than Green
                         overlap_state = "Red Overlaps Green"
                 else:
                     overlap_state = "Normal"
 
-                # Knuckle Vector direction mapping
                 v3d_x = index_k.x - pinky_k.x
                 v3d_y = index_k.y - pinky_k.y
 
@@ -190,58 +179,73 @@ with HandLandmarker.create_from_options(hand_options) as hand_detector, \
             data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
             sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
 
-        # --- CONDITION-BASED VOLUMETRIC RENDERING ---
-        if hand_seen and current_growth > 0:
-            # Condition 1: Green overlaps Red -> Completely skip rendering loop to hide saber
-            if overlap_state == "Green Overlaps Red":
-                pass 
-                
-            # Condition 2: Red overlaps Green -> Render as a singular concentrated dot point
-            elif overlap_state == "Red Overlaps Green":
-                dot_radius = int(18 * smooth_z_scale)
-                cv2.circle(glow_mask, (int(smooth_hx), int(smooth_hy)), dot_radius * 2, blade_color, -1, cv2.LINE_AA)
-                cv2.circle(core_mask, (int(smooth_hx), int(smooth_hy)), int(dot_radius * 0.4), (255, 255, 255), -1, cv2.LINE_AA)
-
-            # Condition 3: Normal state -> Render full volumetric 12-segment geometry
-            else:
-                num_segments = 12
-                projected_points = []
-                radii = []
-
-                v_dx = smooth_tx - smooth_hx
-                v_dy = smooth_ty - smooth_hy
-                mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
-                if mag_smooth > 0:
-                    v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
-                else:
-                    v_dx, v_dy = 0, -1
-
-                total_len = np.sqrt((smooth_tx - smooth_hx)**2 + (smooth_ty - smooth_hy)**2)
-
-                for i in range(num_segments + 1):
-                    step = (i / num_segments) * total_len
-                    scr_x = int(smooth_hx + v_dx * step)
-                    scr_y = int(smooth_hy + v_dy * step)
-                    projected_points.append((scr_x, scr_y))
-                    
-                    taper_factor = 1.0 - (i / num_segments) * 0.4
-                    seg_rad = int(14 * smooth_z_scale * taper_factor)
-                    radii.append(max(2, seg_rad))
-
-                for i in range(num_segments):
-                    pt1 = projected_points[i]
-                    pt2 = projected_points[i+1]
-                    rad = radii[i]
-                    cv2.line(glow_mask, pt1, pt2, blade_color, rad * 2, cv2.LINE_AA)
-                    cv2.line(core_mask, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_AA)
-
-            # High-Speed downscaled Glow Shader step integration
-            small_glow = cv2.resize(glow_mask, (w // 4, h // 4), interpolation=cv2.INTER_LINEAR)
-            small_blur = cv2.GaussianBlur(small_glow, (9, 9), 0)
-            glow_blur = cv2.resize(small_blur, (w, h), interpolation=cv2.INTER_LINEAR)
+        # --- HIGH-SPEED CONDITION-BASED VOLUMETRIC RENDERING ---
+        if hand_seen and current_growth > 0 and overlap_state != "Green Overlaps Red":
             
-            saber_composite = cv2.addWeighted(glow_blur, 1.0, core_mask, 1.0, 0)
-            frame = cv2.add(frame, saber_composite)
+            # Find the bounding box limits around the saber track space to target optimization
+            all_x = [smooth_hx, smooth_tx]
+            all_y = [smooth_hy, smooth_ty]
+            
+            pad = int(40 * smooth_z_scale)
+            min_x = max(0, int(min(all_x)) - pad)
+            max_x = min(w, int(max(all_x)) + pad)
+            min_y = max(0, int(min(all_y)) - pad)
+            max_y = min(h, int(max(all_y)) + pad)
+            
+            roi_w = max_x - min_x
+            roi_h = max_y - min_y
+            
+            if roi_w > 0 and roi_h > 0:
+                # Build local canvas patches targeting only the isolated region coordinates
+                glow_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
+                core_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
+                
+                shx_roi, shy_roi = int(smooth_hx - min_x), int(smooth_hy - min_y)
+
+                if overlap_state == "Red Overlaps Green":
+                    dot_radius = int(18 * smooth_z_scale)
+                    cv2.circle(glow_roi, (shx_roi, shy_roi), dot_radius * 2, blade_color, -1, cv2.LINE_8)
+                    cv2.circle(core_roi, (shx_roi, shy_roi), int(dot_radius * 0.4), (255, 255, 255), -1, cv2.LINE_8)
+                else:
+                    num_segments = 12
+                    v_dx = smooth_tx - smooth_hx
+                    v_dy = smooth_ty - smooth_hy
+                    mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+                    if mag_smooth > 0:
+                        v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+                    else:
+                        v_dx, v_dy = 0, -1
+
+                    total_len = mag_smooth
+                    
+                    # Compute segment anchors locally inside the cropped space patch
+                    points_roi = []
+                    radii = []
+                    for i in range(num_segments + 1):
+                        step = (i / num_segments) * total_len
+                        points_roi.append((int(shx_roi + v_dx * step), int(shy_roi + v_dy * step)))
+                        taper_factor = 1.0 - (i / num_segments) * 0.4
+                        radii.append(max(2, int(14 * smooth_z_scale * taper_factor)))
+
+                    for i in range(num_segments):
+                        pt1 = points_roi[i]
+                        pt2 = points_roi[i+1]
+                        rad = radii[i]
+                        # Optimized standard fast drawing style lines
+                        cv2.line(glow_roi, pt1, pt2, blade_color, rad * 2, cv2.LINE_8)
+                        cv2.line(core_roi, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_8)
+
+                # Fast Blur Pipeline: Downscale the small area to a quarter of its size, blur it, and upscale it back
+                ds_w, ds_h = max(1, roi_w // 4), max(1, roi_h // 4)
+                small_glow = cv2.resize(glow_roi, (ds_w, ds_h), interpolation=cv2.INTER_NEAREST)
+                small_blur = cv2.GaussianBlur(small_glow, (5, 5), 0)
+                glow_blur_roi = cv2.resize(small_blur, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
+                
+                saber_composite_roi = cv2.addWeighted(glow_blur_roi, 1.0, core_roi, 1.0, 0)
+                
+                # Apply the blurred local canvas patch cleanly directly on top of the original base canvas frame
+                frame_roi = frame[min_y:max_y, min_x:max_x]
+                frame[min_y:max_y, min_x:max_x] = cv2.add(frame_roi, saber_composite_roi)
 
         # Performance State Readouts
         cv2.putText(frame, f"Overlap State: {overlap_state}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
