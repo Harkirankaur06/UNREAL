@@ -1,51 +1,78 @@
 import cv2
 import numpy as np
+import time
 
 # Open live webcam capture
 cap = cv2.VideoCapture(0)
 
-print("Hulk Part 1: Body Recognition & Green Tint initialized.")
-print("Press 'q' to exit.")
+# Check if camera opened successfully
+if not cap.isOpened():
+    print("Error: Could not open webcam.")
+    exit()
 
+print("Camera warming up... Get ready to step out of the frame.")
+
+# 1. VISIBLE BACKGROUND CALIBRATION STEP (3-Second Countdown Loop)
+start_time = time.time()
+bg_frame = None
+
+while time.time() - start_time < 3.0:
+    ret, frame = cap.read()
+    if not ret:
+        continue
+    
+    frame = cv2.flip(frame, 1)
+    bg_frame = frame.copy() # Keeps saving the latest clean frame as the camera adjusts
+    
+    # Show a live preview window so you can see if you are out of the frame
+    cv2.putText(bg_frame, "LEARNING BACKGROUND... STAY OUT OF FRAME", (30, 50), 
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+    cv2.imshow("Hulk Part 1: Background Subtraction Layer", bg_frame)
+    cv2.waitKey(1)
+
+# Process the final baseline background frame captured at the end of the 3 seconds
+bg_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+bg_gray = cv2.GaussianBlur(bg_gray, (21, 21), 0)
+
+print("\nBackground successfully learned! Step into the frame.")
+
+# 2. MAIN CONVERSION LOOP
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret:
         break
 
-    # Flip horizontally for natural mirror look
     frame = cv2.flip(frame, 1)
     h, w, c = frame.shape
     
-    # 1. Convert to HSV to segment out the human subject from the blue wall background
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    # Compare live frame to the learned background matrix
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray_frame = cv2.GaussianBlur(gray_frame, (21, 21), 0)
     
-    # Range designed to target human skin + typical clothing tones, explicitly ignoring the blue background spectrum
-    lower_human = np.array([0, 5, 20], dtype=np.uint8)
-    upper_human = np.array([40, 255, 255], dtype=np.uint8)
-    body_mask = cv2.inRange(hsv, lower_human, upper_human)
+    # Calculate difference between the learned empty room and you
+    frame_delta = cv2.absdiff(bg_gray, gray_frame)
+    _, body_mask = cv2.threshold(frame_delta, 25, 255, cv2.THRESH_BINARY)
     
-    # 2. Advanced Morphology to close gaps (combining your skin, face, and shirt into one solid silhouette)
-    kernel_close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
-    body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_CLOSE, kernel_close)
+    # Clean up the silhouette mask holes
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_CLOSE, kernel)
     body_mask = cv2.dilate(body_mask, None, iterations=2)
     
-    # 3. Create the Cinematic Dark Dirty Green Tint Layer
+    # Create the cinematic dark dirty green tint layer
     tint_layer = np.zeros_like(frame)
-    # BGR format: A deep, muted comic-book style olive green
-    tint_layer[:] = [30, 85, 40]  
+    tint_layer[:] = [30, 85, 40]  # Dark olive green (BGR)
     
-    # Blend the green tint over the frame (50% original textures + 50% green tint)
+    # Blend tint over original textures
     green_body = cv2.addWeighted(frame, 0.5, tint_layer, 0.5, 0)
     
-    # 4. Smooth out the edges of the mask so the transition isn't harsh or jagged
-    feathered_mask = cv2.GaussianBlur(body_mask, (35, 35), 0)
+    # Smooth edges
+    feathered_mask = cv2.GaussianBlur(body_mask, (31, 31), 0)
     alpha = feathered_mask[:, :, np.newaxis] / 255.0
     
-    # Composite: Apply the dirty green matrix ONLY to the human silhouette area
+    # Apply green tint strictly to the moving body shape silhouette
     output_frame = (alpha * green_body + (1.0 - alpha) * frame).astype(np.uint8)
     
-    # Display the result for Part 1
-    cv2.imshow("Hulk Transformation - Part 1: Body Green Tint", output_frame)
+    cv2.imshow("Hulk Part 1: Background Subtraction Layer", output_frame)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
