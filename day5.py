@@ -39,15 +39,13 @@ while True:
 
     # 3. Apply conditional logic based on detection
     if not glasses_detected:
-        # Active: Apply Thermal Vision
         display_frame = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
-        cv2.putText(display_frame, "GLASSES DETECTED: THERMAL MODE", (20, 40), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(display_frame, "E.D.I.T.H. OVERRIDE: THERMAL MATRIX ACTIVATE", (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
     else:
-        # Passive: Keep normal feed
         display_frame = frame
-        cv2.putText(display_frame, "NORMAL MODE", (20, 40), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(display_frame, "SYSTEM SECURE: STARK HUD PASSIVE", (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
     cv2.imshow('Day 5: Smart Thermal Toggle', display_frame)
 
