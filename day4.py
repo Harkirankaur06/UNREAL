@@ -2,9 +2,8 @@ import cv2
 import numpy as np
 import time
 
-# Load OpenCV's built-in structural face and eye feature trackers
+# Load OpenCV's structural face tracker
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
-eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
 
 # Open live webcam capture
 cap = cv2.VideoCapture(0)
@@ -29,7 +28,7 @@ while time.time() - start_time < 3.0:
     
     cv2.putText(bg_frame, "LEARNING BACKGROUND... STAY OUT OF FRAME", (30, 50), 
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
-    cv2.imshow("Hulk Part 3: Expression Trigger Engine", bg_frame)
+    cv2.imshow("Hulk Part 3: Robust Expression Trigger Engine", bg_frame)
     cv2.waitKey(1)
 
 # Process master baseline background frame
@@ -37,7 +36,10 @@ bg_gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 bg_gray = cv2.GaussianBlur(bg_gray, (21, 21), 0)
 
 print("\nBackground successfully learned! Step into the frame.")
-print("Frown/Scowl at the camera to trigger the Hulk transformation!")
+print("Frown, scowl, or tense up your face to trigger the Hulk transformation!")
+
+# Keep track of a moving average baseline for face contrast variance
+neutral_variance_baseline = None
 
 while cap.isOpened():
     ret, frame = cap.read()
@@ -58,33 +60,35 @@ while cap.isOpened():
     body_mask = cv2.morphologyEx(body_mask, cv2.MORPH_CLOSE, kernel)
     body_mask = cv2.dilate(body_mask, None, iterations=2)
     
-    # 2. ANGER DETECTION ENGINE (Track Eyebrow/Eye Compression)
-    # Detect the face box coordinates first
+    # 2. ROBUST FACIAL CONTRACTION DETECTOR
     faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(80, 80))
     
     is_angry = False
     
     for (x, y, fw, fh) in faces:
-        # Isolate the upper half of the face where the eyes and brows reside
-        upper_face_y = y + int(fh * 0.15)
-        upper_face_h = int(fh * 0.45)
-        face_roi_gray = gray_frame[upper_face_y:upper_face_y+upper_face_h, x:x+fw]
+        # Extract the exact face pixel bounding box matrix
+        face_roi = gray_frame[y:y+fh, x:x+fw]
         
-        # Detect eyes within the upper face zone
-        eyes = eye_cascade.detectMultiScale(face_roi_gray, scaleFactor=1.1, minNeighbors=4, minSize=(15, 15))
+        # Calculate standard deviation/variance of pixel intensity in the face region
+        # When you furrow your brows and squint, deep shadow lines create sharp localized texture changes
+        _, current_variance = cv2.meanStdDev(face_roi)
+        current_var_val = current_variance[0][0]
         
-        # If eyes are found, track their vertical position relative to the top of the brow region
-        if len(eyes) >= 2:
-            # Calculate the average Y position of both eyes inside the face region
-            avg_eye_y = sum([ey + (eh // 2) for (ex, ey, ew, eh) in eyes]) / len(eyes)
+        # Dynamically establish your normal face baseline in the first few active frames
+        if neutral_variance_baseline is None:
+            neutral_variance_baseline = current_var_val
+        else:
+            # Smoothly update baseline over time when face is resting
+            if current_var_val <= neutral_variance_baseline * 1.05:
+                neutral_variance_baseline = 0.95 * neutral_variance_baseline + 0.05 * current_var_val
+        
+        # TRIGGER MECHANISM: If contrast variance jumps by more than 8% relative to baseline, 
+        # it registers the dynamic shadow mask of an intense frown/scowl expression.
+        if current_var_val > neutral_variance_baseline * 1.08:
+            is_angry = True
             
-            # The closer the eyes look to the top bounding box of the face, the more the brow is furrowed.
-            # A lower normalized distance indicates an angry scowl.
-            ang_ratio = avg_eye_y / fh
-            
-            # Threshold calibration: standard neutral is ~0.35+. Lower numbers = deep frown.
-            if ang_ratio < 0.28:
-                is_angry = True
+        # Optional: Draw a subtle indicator box around your face just to confirm tracking is working
+        cv2.rectangle(frame, (x, y), (x+fw, y+fh), (255, 255, 255), 1)
         break
 
     # 3. TRANSFORMATION CONDITION CONTROLLER
@@ -116,16 +120,14 @@ while cap.isOpened():
         
         final_output = (alpha * cropped_green + (1.0 - alpha) * output_frame).astype(np.uint8)
         
-        # Add a visual warning status effect on screen
         cv2.putText(final_output, "HULK STATE: ACTIVE", (30, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
     else:
-        # If your face is relaxed, show the standard human video stream with no transformations
         final_output = frame.copy()
         cv2.putText(final_output, "HULK STATE: CALM", (30, 50), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 0, 0), 2)
 
-    cv2.imshow("Hulk Part 3: Expression Trigger Engine", final_output)
+    cv2.imshow("Hulk Part 3: Robust Expression Trigger Engine", final_output)
     
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
