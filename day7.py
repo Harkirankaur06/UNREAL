@@ -38,7 +38,7 @@ def main():
         return
 
     # --- SUNLIGHT TRIGGER CONFIGURATION ---
-    SUNLIGHT_THRESHOLD = 160
+    SUNLIGHT_THRESHOLD = 125
 
     print("Press 'q' to exit.")
 
