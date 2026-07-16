@@ -4,138 +4,185 @@ import numpy as np
 import random
 import math
 
-# --- CONFIG ---
-GRID_SIZE = 2
-PUZZLE_WIDTH = 300
-PUZZLE_HEIGHT = 300
-PINCH_THRESHOLD = 30  # Adjust if tracking is too loose/tight
+# --- GAME CONFIGURATION ---
+ROWS = 3              # 3x3 grid
+COLS = 3
+PINCH_THRESHOLD = 35  # Max distance between thumb & index to register a pinch
 
-class PuzzlePiece:
-    def __init__(self, img, correct_pos, current_pos, size):
-        self.img = img
-        self.correct_pos = correct_pos
-        self.current_pos = list(current_pos)
-        self.size = size
-        self.is_locked = False
+class Tile:
+    def __init__(self, correct_id):
+        self.correct_id = correct_id  # The slice's original index (0 to 8)
+        self.current_id = correct_id  # Where it is currently positioned on the grid
 
-    def is_hovered(self, x, y):
-        px, py = self.current_pos
-        w, h = self.size
-        return px <= x <= px + w and py <= y <= py + h
-
-# Use CVZone's simpler tracker instead of pure MediaPipe
+# Initialize tracker and webcam
 detector = HandDetector(detectionCon=0.7, maxHands=1)
 cap = cv2.VideoCapture(0)
 
-puzzle_initialized = False
-pieces = []
-selected_piece = None
-board_pos = (50, 100)
+# Set camera resolution (standard 640x480 works best for performance)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+# Game State Setup
+grid_initialized = False
+tiles = []            # To track our logical tile layout
+scrambled_mapping = [] # Maps grid_position -> correct_slice_id
+selected_index = None # Keeps track of the first tile selected for swapping
 game_won = False
+
+def scramble_grid(r, c):
+    """Generates a shuffled list of indices, ensuring it doesn't start already solved."""
+    indices = list(range(r * c))
+    while True:
+        random.shuffle(indices)
+        # Avoid generating a pre-solved puzzle
+        if indices != list(range(r * c)):
+            return indices
 
 while cap.isOpened():
     success, frame = cap.read()
     if not success:
         break
 
-    frame = cv2.flip(frame, 1)
+    frame = cv2.flip(frame, 1) # Mirror feed
     h_frame, w_frame, _ = frame.shape
     
-    # Init Puzzle pieces (Slicing the image)
-    if not puzzle_initialized:
-        crop_size = min(h_frame, w_frame) // 2
-        cy, cx = h_frame // 2, w_frame // 2
-        cropped_base = frame[cy - crop_size//2 : cy + crop_size//2, cx - crop_size//2 : cx + crop_size//2]
-        puzzle_image = cv2.resize(cropped_base, (PUZZLE_WIDTH, PUZZLE_HEIGHT))
-        
-        piece_w = PUZZLE_WIDTH // GRID_SIZE
-        piece_h = PUZZLE_HEIGHT // GRID_SIZE
-        
-        for r in range(GRID_SIZE):
-            for c in range(GRID_SIZE):
-                src_x = c * piece_w
-                src_y = r * piece_h
-                slice_img = puzzle_image[src_y : src_y + piece_h, src_x : src_x + piece_w]
-                correct_x = board_pos[0] + src_x
-                correct_y = board_pos[1] + src_y
-                random_x = random.randint(w_frame // 2 + 50, w_frame - piece_w - 50)
-                random_y = random.randint(100, h_frame - piece_h - 100)
-                
-                pieces.append(PuzzlePiece(slice_img, (correct_x, correct_y), (random_x, random_y), (piece_w, piece_h)))
-        puzzle_initialized = True
+    # Calculate dimensions for each tile dynamically based on camera resolution
+    tile_w = w_frame // COLS
+    tile_h = h_frame // ROWS
 
-    # Detect hand
-    hands, frame = detector.findHands(frame)
-    
+    # 1. INITIALIZE GRID ONCE
+    if not grid_initialized:
+        scrambled_mapping = scramble_grid(ROWS, COLS)
+        for i in range(ROWS * COLS):
+            tile = Tile(correct_id=i)
+            # Assign it its starting scrambled position
+            tile.current_id = scrambled_mapping[i]
+            tiles.append(tile)
+        grid_initialized = True
+
+    # Capture the active (unscrambled) camera frame to slice up
+    live_frame = frame.copy()
+
+    # Detect Hand Gestures
+    hands, frame = detector.findHands(frame, draw=True)
     cursor_pos = None
     is_pinching = False
 
     if hands:
         hand = hands[0]
-        lmList = hand["lmList"]  # List of 21 Landmark points
-        
-        # Landmark 8 is Index tip, Landmark 4 is Thumb tip
-        ix, iy = lmList[8][0], lmList[8][1]
-        tx, ty = lmList[4][0], lmList[4][1]
+        lmList = hand["lmList"]
+        ix, iy = lmList[8][0], lmList[8][1]  # Index finger tip
+        tx, ty = lmList[4][0], lmList[4][1]  # Thumb tip
         
         cursor_pos = (ix, iy)
-        
-        # Calculate distance between index and thumb
         distance = math.hypot(tx - ix, ty - iy)
         
         if distance < PINCH_THRESHOLD:
             is_pinching = True
             cv2.circle(frame, cursor_pos, 15, (0, 255, 0), cv2.FILLED)
         else:
-            is_pinching = False
             cv2.circle(frame, cursor_pos, 10, (0, 0, 255), cv2.FILLED)
 
-    # Gameplay Interaction
+    # 2. DETERMINE HOVERED TILE INDEX
+    hovered_index = None
     if cursor_pos:
         cx, cy = cursor_pos
+        # Math to find which grid coordinate (col, row) the cursor is in
+        col = min(cx // tile_w, COLS - 1)
+        row = min(cy // tile_h, ROWS - 1)
+        hovered_index = row * COLS + col
+
+    # 3. SWAP LOGIC (STATE MACHINE)
+    if not game_won and hovered_index is not None:
         if is_pinching:
-            if selected_piece is None:
-                for p in reversed(pieces):
-                    if not p.is_locked and p.is_hovered(cx, cy):
-                        selected_piece = p
-                        break
-            if selected_piece:
-                selected_piece.current_pos[0] = cx - selected_piece.size[0] // 2
-                selected_piece.current_pos[1] = cy - selected_piece.size[1] // 2
+            # If nothing is selected yet, select the hovered tile
+            if selected_index is None:
+                selected_index = hovered_index
         else:
-            if selected_piece:
-                px, py = selected_piece.current_pos
-                tx, ty = selected_piece.correct_pos
-                snap_distance = math.hypot(px - tx, py - ty)
+            # If we released our pinch over a DIFFERENT tile, perform the swap!
+            if selected_index is not None:
+                if selected_index != hovered_index:
+                    # Find the two tiles in our list and swap their screen positions
+                    tile_a = next(t for t in tiles if t.current_id == selected_index)
+                    tile_b = next(t for t in tiles if t.current_id == hovered_index)
+                    
+                    # Swap current positions
+                    tile_a.current_id, tile_b.current_id = tile_b.current_id, tile_a.current_id
                 
-                if snap_distance < 30:
-                    selected_piece.current_pos = list(selected_piece.correct_pos)
-                    selected_piece.is_locked = True
-                selected_piece = None
+                # Reset selection
+                selected_index = None
 
-    # Render board outline
-    cv2.rectangle(frame, board_pos, (board_pos[0] + PUZZLE_WIDTH, board_pos[1] + PUZZLE_HEIGHT), (255, 255, 255), 2)
-    cv2.putText(frame, "TARGET BOARD", (board_pos[0], board_pos[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
+    # 4. DRAW THE SCRAMBLED CAMERA FEED
+    # We construct the visual frame by cutting pieces out of 'live_frame' 
+    # and pasting them into 'frame' based on their scrambled positions.
+    for tile in tiles:
+        # Where the slice belongs on the live video feed
+        src_row = tile.correct_id // COLS
+        src_col = tile.correct_id % COLS
+        src_y = src_row * tile_h
+        src_x = src_col * tile_w
+        
+        # Crop the slice from the current raw camera frame
+        slice_img = live_frame[src_y : src_y + tile_h, src_x : src_x + tile_w]
+        
+        # Where it needs to be drawn on the active scrambled screen
+        dest_row = tile.current_id // COLS
+        dest_col = tile.current_id % COLS
+        dest_y = dest_row * tile_h
+        dest_x = dest_col * tile_w
+        
+        # Overwrite that section of the display frame
+        frame[dest_y : dest_y + tile_h, dest_x : dest_x + tile_w] = slice_img
+        
+        # Draw grid borders
+        border_color = (100, 100, 100) # Subtle gray border
+        cv2.rectangle(frame, (dest_x, dest_y), (dest_x + tile_w, dest_y + tile_h), border_color, 1)
 
-    # Draw puzzle pieces
-    for p in pieces:
-        px, py = int(p.current_pos[0]), int(p.current_pos[1])
-        w, h = p.size
-        frame[py : py + h, px : px + w] = p.img
-        border_color = (0, 255, 0) if p.is_locked else (255, 255, 0)
-        cv2.rectangle(frame, (px, py), (px + w, py + h), border_color, 1)
+    # 5. DRAW INTERACTION HIGHLIGHTS
+    # Highlight the selected tile (Yellow border)
+    if selected_index is not None:
+        sel_row = selected_index // COLS
+        sel_col = selected_index % COLS
+        cv2.rectangle(frame, (sel_col * tile_w, sel_row * tile_h), 
+                      ((sel_col + 1) * tile_w, (sel_row + 1) * tile_h), (0, 255, 255), 4)
+                      
+    # Highlight the currently hovered tile when dragging/preparing to swap (Blue border)
+    if hovered_index is not None and hovered_index != selected_index and not game_won:
+        hov_row = hovered_index // COLS
+        hov_col = hovered_index % COLS
+        cv2.rectangle(frame, (hov_col * tile_w, hov_row * tile_h), 
+                      ((hov_col + 1) * tile_w, (hov_row + 1) * tile_h), (255, 0, 0), 2)
 
-    if all(p.is_locked for p in pieces):
+    # 6. WIN CONDITION CHECK
+    # If every tile's current grid position is equal to its correct ID
+    if all(t.current_id == t.correct_id for t in tiles):
         game_won = True
 
+    # UI Text Overlays
     if game_won:
-        cv2.putText(frame, "YOU SOLVED IT!", (w_frame // 2 - 150, 50), cv2.FONT_HERSHEY_DUPLEX, 1.2, (0, 255, 0), 3)
+        # Draw a semi-transparent dark overlay for the winning screen
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, 0), (w_frame, h_frame), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
+        cv2.putText(frame, "PUZZLE SOLVED!", (w_frame // 2 - 180, h_frame // 2), 
+                    cv2.FONT_HERSHEY_DUPLEX, 1.3, (0, 255, 0), 3)
+        cv2.putText(frame, "Press 'r' to restart or 'q' to quit", (w_frame // 2 - 200, h_frame // 2 + 50), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
     else:
-        cv2.putText(frame, "Pinch to Move pieces!", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(frame, "Pinch to select, Release on another tile to swap!", (15, 35), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
 
-    cv2.imshow("Air Jigsaw Puzzle", frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    # Keyboard Controls
+    key = cv2.waitKey(1) & 0xFF
+    if key == ord('q'):
         break
+    elif key == ord('r'): # Restart / Rescramble
+        scrambled_mapping = scramble_grid(ROWS, COLS)
+        for i, tile in enumerate(tiles):
+            tile.current_id = scrambled_mapping[i]
+        game_won = False
+
+    cv2.imshow("Live Cam Swap Puzzle", frame)
 
 cap.release()
 cv2.destroyAllWindows()
