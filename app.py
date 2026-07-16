@@ -7,7 +7,7 @@ import os
 import sys
 
 # ====================================================================
-# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Glassmorphism)
+# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Glassmorphism Layout)
 # ====================================================================
 st.set_page_config(
     page_title="VISION PORTAL: Real-Time Web-AR Engine",
@@ -52,13 +52,12 @@ st.markdown("""
         display: inline-block;
         margin-top: 5px;
     }
-    /* Mobile Video Wrapper Optimization and Mirroring Layout */
+    /* Mobile Video Wrapper Optimization (Unmirrored Stream Channel) */
     iframe, video {
         border-radius: 12px;
         border: 1px solid #3d2b7a;
         max-width: 100% !important;
         height: auto !important;
-        transform: scaleX(-1); /* Ensures true mirror viewport rendering across mobile browsers */
     }
     </style>
 """, unsafe_allow_html=True)
@@ -117,7 +116,7 @@ st.sidebar.link_button(
 def execute_external_filter(module_name, img_matrix):
     """
     Safely executes dynamic file loads while keeping internal math arrays 
-    completely clean and separated.
+    completely clean, isolated, and aligned with individual processing workflows.
     """
     try:
         target_file = f"{module_name}.py"
@@ -158,21 +157,18 @@ def execute_external_filter(module_name, img_matrix):
 # 4. ASYNCHRONOUS PIPELINE FRAME ROUTING
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
-    # Pass the raw camera feed straight into your files.
-    # Your files mirror the image internally, so we don't mess up their coordinates!
     img = frame.to_ndarray(format="bgr24")
     h, w, _ = img.shape
 
+    # Pass frame directly into external filter logic execution
     processed_img = execute_external_filter(active_module_target, img)
 
     if processed_img is None:
-        # Fallback interface layer if file is completely missing or empty
+        # Fallback layer screen if target script asset is missing
         cv2.putText(img, f"Active Sandbox Slot: {selected_display_name.split(':')[0]}", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
         cv2.putText(img, f"Awaiting script linkage injection inside {active_module_target}.py", (20, h - 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        # Apply mirror inversion fallback display strictly to placeholder screens
-        img = cv2.flip(img, 1)
     else:
         img = processed_img
 
@@ -193,7 +189,7 @@ with col_video:
             "video": {
                 "width": {"ideal": 640},
                 "height": {"ideal": 480},
-                "facingMode": "user",  # Forces mobile browsers to open front selfie camera immediately
+                "facingMode": "user",  # Prompts mobile devices to leverage front camera natively
                 "frameRate": {"ideal": 30}
             },
             "audio": False
@@ -210,9 +206,9 @@ with col_docs:
     st.metric(label="System Pipeline State", value="Active Ingress", delta="Asynchronous Hook")
     st.markdown("""
     **Core Platform Specifications:**
-    *   **Architecture:** Dynamic module compilation isolation, keeping separate tracking coordinates safely contained.
-    *   **Mobile Engine Layout:** Automated layout alignment styling ensuring clean rendering dimensions across iOS/Android browsers.
-    *   **Isolation Architecture:** Heavy frame processing operations offloaded asynchronously to background worker loops to prevent UI stutters.
+    *   **Architecture:** Dynamic programmatic file-system integration, parsing live frames cleanly across independent source channels.
+    *   **Hardware Interface Optimization:** Explicit video tracking constraints designed to secure stable connection authorization loops on iOS/Android mobile architectures.
+    *   **Isolation Architecture:** Ingress matrix processing is executed entirely within background thread tasks to preserve responsive UI rendering.
     """)
 
 st.markdown("---")
