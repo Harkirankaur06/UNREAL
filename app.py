@@ -4,9 +4,10 @@ import av
 import cv2
 import importlib.util
 import os
+import sys
 
 # ====================================================================
-# 1. BRILLIANT INTERFACE STYLING (Custom Modern Dark Theme CSS)
+# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Glassmorphism)
 # ====================================================================
 st.set_page_config(
     page_title="VISION PORTAL: Real-Time Web-AR Engine",
@@ -16,10 +17,12 @@ st.set_page_config(
 
 st.markdown("""
     <style>
+    /* Global Background Grade */
     .main {
         background: linear-gradient(135deg, #0f0c20 0%, #15102a 50%, #06040a 100%);
         color: #ffffff;
     }
+    /* Control Panel Alignment */
     div[data-testid="stSidebar"] {
         background-color: #0b0816 !important;
         border-right: 1px solid #3d2b7a;
@@ -31,7 +34,7 @@ st.markdown("""
     }
     .app-title {
         font-family: 'Inter', sans-serif;
-        font-size: 2.8rem;
+        font-size: 2.5rem;
         font-weight: 800;
         background: linear-gradient(90deg, #ff007f, #7f00ff, #00f0ff);
         -webkit-background-clip: text;
@@ -49,6 +52,14 @@ st.markdown("""
         display: inline-block;
         margin-top: 5px;
     }
+    /* Mobile Video Wrapper Optimization and Mirroring Layout */
+    iframe, video {
+        border-radius: 12px;
+        border: 1px solid #3d2b7a;
+        max-width: 100% !important;
+        height: auto !important;
+        transform: scaleX(-1); /* Ensures true mirror viewport rendering across mobile browsers */
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -58,23 +69,42 @@ st.markdown('<div><span class="badge">30-Day Web-AR & Computer Vision Challenge<
 st.markdown("---")
 
 # ====================================================================
-# 2. THE 30-DAY CHANNELS & EXTRA LAYERS SELECTOR
+# 2. THE COMPLETE CHALLENGE MATRIX MATRIX SELECTOR
 # ====================================================================
+CORE_CHALLENGES = {
+    "Day 01: Continuous Live Isolation 🛸": "day1",
+    "Day 02: Quantum Collapse Anomaly 🌀": "day2",
+    "Day 03: True 3D Projective Saber ⚔️": "day3",
+    "Day 04: Facial Expression Hulk Morph 🦖": "day4",
+    "Day 05: Smart Thermal Toggle HUD 🕶️": "day5",
+    "Day 06: Magical Pixie Sparkle Wand ✨": "day6",
+    "Day 07: Sunlight Vampire Shimmer 💎": "day7",
+    "Day 08: Live Cam Swap Grid Puzzle 🧩": "day8",
+}
 
-# Build the selection matrix dynamically mapping display titles to your exact file scripts
-CORE_CHALLENGES = [f"Day {str(i).zfill(2)}" for i in range(1, 31)]
-EXTRA_LAYERS = ["Cake Layer Filter", "Water Effect Filter"]
+# Automatically populate slots for the remaining upcoming slots (9 to 30)
+for day in range(9, 31):
+    day_str = str(day).zfill(2)
+    CORE_CHALLENGES[f"Day {day_str}: Sandbox Active Slot ⏳"] = f"day{day}"
+
+EXTRA_LAYERS = {
+    "Extra: Glassmorphic Cake Engine 🎂": "cake",
+    "Extra: Chrono-Friction Temporal Mirror 🌊": "water effect"
+}
+
+ALL_LAYERS = {**CORE_CHALLENGES, **EXTRA_LAYERS}
 
 st.sidebar.markdown("### 🎮 Control Center")
-selected_layer = st.sidebar.selectbox(
-    "Choose Active Filter Matrix Layer:",
-    CORE_CHALLENGES + EXTRA_LAYERS
+selected_display_name = st.sidebar.selectbox(
+    "Select Active Challenge Matrix Layer:",
+    list(ALL_LAYERS.keys())
 )
+active_module_target = ALL_LAYERS[selected_display_name]
 
 # Professional Links Panel
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 📈 Live Challenge Progress")
-st.sidebar.info("💡 Days 09-30 are dropping daily as the implementation architecture expands.")
+st.sidebar.info("💡 Days 09-30 are dropping daily as the implementation architecture expands on LinkedIn.")
 st.sidebar.link_button(
     "🔗 Follow My Daily Updates on LinkedIn", 
     "https://www.linkedin.com/in/harkiran-kaur-/",
@@ -82,45 +112,44 @@ st.sidebar.link_button(
 )
 
 # ====================================================================
-# 3. DYNAMIC INTERACTION IMPORT UTILITY
+# 3. INTERACTIVE RELIABLE DYNAMIC DISPATCH ENGINE
 # ====================================================================
-def execute_external_filter(module_name, frame):
+def execute_external_filter(module_name, img_matrix):
     """
-    Dynamically loads your standalone .py files from the workspace root 
-    and checks for a standard process or filter function execution window.
+    Safely executes dynamic file loads while keeping internal math arrays 
+    completely clean and separated.
     """
     try:
-        # Resolve filenames matching your precise tree layout structure
-        if module_name == "water effect":
-            target_file = "water effect.py"
-        elif module_name == "cake":
-            target_file = "cake.py"
-        else:
-            target_file = f"{module_name}.py"
-
+        target_file = f"{module_name}.py"
         if not os.path.exists(target_file):
             return None
 
-        # Python programmatic import binding pipeline
         spec = importlib.util.spec_from_file_location(module_name, target_file)
         module = importlib.util.module_from_spec(spec)
+        
+        sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
-        # First check if the file uses a Class architecture (like the new Day 1)
-        # Class-based check (looks for dynamic instance generation)
-        class_name = f"{module_name.capitalize()}LevitationEngine" if "day1" in module_name else None
+        # Handle Class-based instances (like Day 1 & Day 2) seamlessly via persistent memory state
+        class_name = None
+        if module_name == "day1": class_name = "Day1LevitationEngine"
+        elif module_name == "day2": class_name = "Day2QuantumEngine"
+        elif module_name == "cake": class_name = "CakeGlowEngine"
+        
         if class_name and hasattr(module, class_name):
-            # Cache the engine instance in Streamlit session state so tracking memory persists between frames
-            state_key = f"engine_{module_name}"
+            state_key = f"inst_{module_name}"
             if state_key not in st.session_state:
                 st.session_state[state_key] = getattr(module, class_name)()
-            return st.session_state[state_key].process_frame(frame)
+            return st.session_state[state_key].process_frame(img_matrix)
 
-        # Function-based check (fallback to global functions like process_frame or apply_filter)
-        for target_fn in ["process_frame", "apply_filter", "process", "filter"]:
+        # Handle structural function execution layers (Day 3 through Day 8, water effect)
+        if hasattr(module, "process_frame"):
+            return getattr(module, "process_frame")(img_matrix)
+            
+        for target_fn in ["apply_filter", "process", "filter", "main"]:
             if hasattr(module, target_fn):
-                return getattr(module, target_fn)(frame)
-        
+                return getattr(module, target_fn)(img_matrix)
+
         return None
     except Exception as e:
         return None
@@ -129,57 +158,61 @@ def execute_external_filter(module_name, frame):
 # 4. ASYNCHRONOUS PIPELINE FRAME ROUTING
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
+    # Pass the raw camera feed straight into your files.
+    # Your files mirror the image internally, so we don't mess up their coordinates!
     img = frame.to_ndarray(format="bgr24")
     h, w, _ = img.shape
-    
-    # Map the dropdown state to the corresponding file name target
-    if "Day" in selected_layer:
-        day_num = int(selected_layer.split()[1])
-        target_module = f"day{day_num}"
-    elif "Cake" in selected_layer:
-        target_module = "cake"
-    else:
-        target_module = "water effect"
 
-    # Attempt dynamic ingestion from your file modules
-    processed_img = execute_external_filter(target_module, img)
+    processed_img = execute_external_filter(active_module_target, img)
 
-    # Fallback to visual feedback UI if the file doesn't exist yet (Days 09-30) or missing entrypoint function
     if processed_img is None:
-        cv2.putText(img, f"Active Layer Sandbox Slot: {selected_layer}", (20, 40), 
+        # Fallback interface layer if file is completely missing or empty
+        cv2.putText(img, f"Active Sandbox Slot: {selected_display_name.split(':')[0]}", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
-        cv2.putText(img, f"Awaiting code link injection inside {target_module}.py", (20, h - 30), 
+        cv2.putText(img, f"Awaiting script linkage injection inside {active_module_target}.py", (20, h - 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        # Apply mirror inversion fallback display strictly to placeholder screens
+        img = cv2.flip(img, 1)
     else:
         img = processed_img
 
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
-# 5. ASYNC WebRTC ENGINE INGRESS HOOKS
+# 5. MOBILE-STABILIZED WebRTC HARDWARE INTEGRATION LOOP
 # ====================================================================
 col_video, col_docs = st.columns([2, 1])
 
 with col_video:
     st.markdown("#### 📽️ Live AR Canvas Feed")
+    
     webrtc_streamer(
         key="vision-portal-streamer",
         video_frame_callback=process_video_frame,
-        media_stream_constraints={"video": True, "audio": False},
+        media_stream_constraints={
+            "video": {
+                "width": {"ideal": 640},
+                "height": {"ideal": 480},
+                "facingMode": "user",  # Forces mobile browsers to open front selfie camera immediately
+                "frameRate": {"ideal": 30}
+            },
+            "audio": False
+        },
         rtc_configuration=RTCConfiguration(
-            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]}
+            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]}
         ),
         async_processing=True
     )
 
 with col_docs:
     st.markdown("#### 🔬 Pipeline Engine Metrics")
-    st.info(f"**Target Layer Module:** {selected_layer}")
-    st.metric(label="Pipeline Latency Engine Check", value="Stable Ingress", delta="Asynchronous Hook")
+    st.info(f"**Target Layer Module:** `{active_module_target}.py`")
+    st.metric(label="System Pipeline State", value="Active Ingress", delta="Asynchronous Hook")
     st.markdown("""
     **Core Platform Specifications:**
-    *   **Architecture:** Programmatic file-system injection mapping frames seamlessly through standalone script matrices.
-    *   **Isolation:** Worker callback handling separates background image processing tasks entirely from the front-end layout engine thread.
+    *   **Architecture:** Dynamic module compilation isolation, keeping separate tracking coordinates safely contained.
+    *   **Mobile Engine Layout:** Automated layout alignment styling ensuring clean rendering dimensions across iOS/Android browsers.
+    *   **Isolation Architecture:** Heavy frame processing operations offloaded asynchronously to background worker loops to prevent UI stutters.
     """)
 
 st.markdown("---")
