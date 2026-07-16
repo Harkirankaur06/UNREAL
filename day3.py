@@ -4,6 +4,7 @@ import numpy as np
 import socket
 import urllib.request
 import os
+import time
 
 # --- NETWORK CONFIGURATION ---
 UDP_IP = "127.0.0.1"
@@ -50,207 +51,209 @@ BASE_SHOULDER_WIDTH = 200.0
 max_knuckle_reference_dist = 1.0
 overlap_state = "Normal"
 
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-
-with HandLandmarker.create_from_options(hand_options) as hand_detector, \
-     PoseLandmarker.create_from_options(pose_options) as pose_detector:
-     
-    while cap.isOpened():
-        success, frame = cap.read()
-        if not success: continue
-
-        frame = cv2.flip(frame, 1)
-        h, w, c = frame.shape
+# ====================================================================
+# STREAMLIT COMPATIBILITY HOOK 
+# ====================================================================
+def process_frame(incoming_frame):
+    global current_growth, saber_ignited, smooth_hx, smooth_hy, smooth_tx, smooth_ty
+    global smooth_z_scale, first_frame, hand_seen, max_knuckle_reference_dist, overlap_state
+    
+    # Instantiate detectors globally inside the callback context if not already open
+    if not hasattr(process_frame, "hand_detector"):
+        process_frame.hand_detector = HandLandmarker.create_from_options(hand_options)
+        process_frame.pose_detector = PoseLandmarker.create_from_options(pose_options)
         
-        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
-        timestamp_ms = int(cap.get(cv2.CAP_PROP_POS_MSEC))
-        
-        pose_result = pose_detector.detect_for_video(mp_image, timestamp_ms)
-        hand_result = hand_detector.detect_for_video(mp_image, timestamp_ms)
+    frame = cv2.flip(incoming_frame, 1)
+    h, w, c = frame.shape
+    
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+    timestamp_ms = int(time.time() * 1000)
+    
+    pose_result = process_frame.pose_detector.detect_for_video(mp_image, timestamp_ms)
+    hand_result = process_frame.hand_detector.detect_for_video(mp_image, timestamp_ms)
 
-        # Torso Horizon Tracker
-        body_dir = "No Body Detected"
-        shoulder_dist_px = int(BASE_SHOULDER_WIDTH)
-        
-        if pose_result and pose_result.pose_landmarks:
-            for pose_landmarks in pose_result.pose_landmarks:
-                l_shoulder = pose_landmarks[11]
-                r_shoulder = pose_landmarks[12]
-                ls_x, ls_y = int(l_shoulder.x * w), int(l_shoulder.y * h)
-                rs_x, rs_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
-                cv2.line(frame, (ls_x, ls_y), (rs_x, rs_y), (0, 255, 255), 2)
-                shoulder_dist_px = int(np.sqrt((rs_x - ls_x)**2 + (rs_y - ls_y)**2))
-                
-                if (r_shoulder.z - l_shoulder.z) > 0.03: body_dir = "Facing Left"
-                elif (r_shoulder.z - l_shoulder.z) < -0.03: body_dir = "Facing Right"
-                else: body_dir = "Facing Forward"
+    # Torso Horizon Tracker
+    body_dir = "No Body Detected"
+    shoulder_dist_px = int(BASE_SHOULDER_WIDTH)
+    
+    if pose_result and pose_result.pose_landmarks:
+        for pose_landmarks in pose_result.pose_landmarks:
+            l_shoulder = pose_landmarks[11]
+            r_shoulder = pose_landmarks[12]
+            ls_x, ls_y = int(l_shoulder.x * w), int(l_shoulder.y * h)
+            rs_x, rs_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
+            cv2.line(frame, (ls_x, ls_y), (rs_x, rs_y), (0, 255, 255), 2)
+            shoulder_dist_px = int(np.sqrt((rs_x - ls_x)**2 + (rs_y - ls_y)**2))
+            
+            if (r_shoulder.z - l_shoulder.z) > 0.03: body_dir = "Facing Left"
+            elif (r_shoulder.z - l_shoulder.z) < -0.03: body_dir = "Facing Right"
+            else: body_dir = "Facing Forward"
 
-        target_z_scale = max(0.3, min(2.5, shoulder_dist_px / BASE_SHOULDER_WIDTH))
+    target_z_scale = max(0.3, min(2.5, shoulder_dist_px / BASE_SHOULDER_WIDTH))
 
-        # 3D Spatial Pipeline
-        if hand_result and hand_result.hand_landmarks:
-            hand_seen = True
-            for hand_landmarks in hand_result.hand_landmarks:
-                wrist = hand_landmarks[0]
-                index_k = hand_landmarks[5]        
-                pinky_k = hand_landmarks[17]       
-                index_tip, index_pip = hand_landmarks[8], hand_landmarks[6]
-                middle_tip, middle_pip = hand_landmarks[12], hand_landmarks[10]
+    # 3D Spatial Pipeline
+    if hand_result and hand_result.hand_landmarks:
+        hand_seen = True
+        for hand_landmarks in hand_result.hand_landmarks:
+            wrist = hand_landmarks[0]
+            index_k = hand_landmarks[5]        
+            pinky_k = hand_landmarks[17]       
+            index_tip, index_pip = hand_landmarks[8], hand_landmarks[6]
+            middle_tip, middle_pip = hand_landmarks[12], hand_landmarks[10]
 
-                hand_is_closed = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
-                saber_ignited = True if hand_is_closed else False
+            hand_is_closed = (index_tip.y > index_pip.y) and (middle_tip.y > middle_pip.y)
+            saber_ignited = True if hand_is_closed else False
 
-                hx_raw = index_k.x * w
-                hy_raw = index_k.y * h
+            hx_raw = index_k.x * w
+            hy_raw = index_k.y * h
 
-                ix_px, iy_px = index_k.x * w, index_k.y * h
-                px_px, py_px = pinky_k.x * w, pinky_k.y * h
-                current_knuckle_dist = np.sqrt((ix_px - px_px)**2 + (iy_px - py_px)**2)
+            ix_px, iy_px = index_k.x * w, index_k.y * h
+            px_px, py_px = pinky_k.x * w, pinky_k.y * h
+            current_knuckle_dist = np.sqrt((ix_px - px_px)**2 + (iy_px - py_px)**2)
 
-                if current_knuckle_dist > max_knuckle_reference_dist:
-                    max_knuckle_reference_dist = current_knuckle_dist
+            if current_knuckle_dist > max_knuckle_reference_dist:
+                max_knuckle_reference_dist = current_knuckle_dist
 
-                foreshortening_factor = max(0.15, min(1.0, current_knuckle_dist / max_knuckle_reference_dist))
+            foreshortening_factor = max(0.15, min(1.0, current_knuckle_dist / max_knuckle_reference_dist))
 
-                is_overlapping = current_knuckle_dist < 18.0  
+            is_overlapping = current_knuckle_dist < 18.0  
 
-                if is_overlapping:
-                    if pinky_k.z < index_k.z:
-                        overlap_state = "Green Overlaps Red"
-                    else:
-                        overlap_state = "Red Overlaps Green"
+            if is_overlapping:
+                if pinky_k.z < index_k.z:
+                    overlap_state = "Green Overlaps Red"
                 else:
-                    overlap_state = "Normal"
-
-                v3d_x = index_k.x - pinky_k.x
-                v3d_y = index_k.y - pinky_k.y
-
-                mag_2d = np.sqrt(v3d_x**2 + v3d_y**2)
-                if mag_2d > 0:
-                    v3d_x, v3d_y = v3d_x / mag_2d, v3d_y / mag_2d
-                else:
-                    v3d_x, v3d_y = 0, -1
-
-                current_growth = min(1.0, current_growth + speed) if saber_ignited else max(0.0, current_growth - speed)
-
-                raw_blade_len_px = h * 0.65 * current_growth * target_z_scale * foreshortening_factor
-                tx_raw = hx_raw + (v3d_x * raw_blade_len_px)
-                ty_raw = hy_raw + (v3d_y * raw_blade_len_px)
-
-                if first_frame:
-                    smooth_hx, smooth_hy = hx_raw, hy_raw
-                    smooth_tx, smooth_ty = tx_raw, ty_raw
-                    smooth_z_scale = target_z_scale
-                    first_frame = False
-                else:
-                    smooth_hx = smooth_hx * (1 - alpha) + hx_raw * alpha
-                    smooth_hy = smooth_hy * (1 - alpha) + hy_raw * alpha
-                    smooth_tx = smooth_tx * (1 - alpha) + tx_raw * alpha
-                    smooth_ty = smooth_ty * (1 - alpha) + ty_raw * alpha
-                    smooth_z_scale = smooth_z_scale * (1 - alpha) + target_z_scale * alpha
-
-                data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
-                sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
-
-                # Diagnostic overlays
-                cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 6, (255, 0, 0), cv2.FILLED) 
-                cv2.circle(frame, (int(hx_raw), int(hy_raw)), 6, (0, 0, 255), cv2.FILLED)          
-                cv2.circle(frame, (int(pinky_k.x * w), int(pinky_k.y * h)), 6, (0, 255, 0), cv2.FILLED) 
-                cv2.line(frame, (int(hx_raw), int(hy_raw)), (int(pinky_k.x * w), int(pinky_k.y * h)), (0, 255, 255), 2)
-                cv2.line(frame, (int(wrist.x * w), int(wrist.y * h)), (int(hx_raw), int(hy_raw)), (255, 255, 255), 2)
-        else:
-            if not saber_ignited:
-                current_growth = max(0.0, current_growth - speed)
-            v_dx = smooth_tx - smooth_hx
-            v_dy = smooth_ty - smooth_hy
-            mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
-            if mag_smooth > 0:
-                v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+                    overlap_state = "Red Overlaps Green"
             else:
-                v_dx, v_dy = 0, -1
-            
-            decayed_len = h * 0.65 * current_growth * smooth_z_scale
-            smooth_tx = smooth_hx + (v_dx * decayed_len)
-            smooth_ty = smooth_hy + (v_dy * decayed_len)
-            
+                overlap_state = "Normal"
+
+            v3d_x = index_k.x - pinky_k.x
+            v3d_y = index_k.y - pinky_k.y
+
+            mag_2d = np.sqrt(v3d_x**2 + v3d_y**2)
+            if mag_2d > 0:
+                v3d_x, v3d_y = v3d_x / mag_2d, v3d_y / mag_2d
+            else:
+                v3d_x, v3d_y = 0, -1
+
+            current_growth = min(1.0, current_growth + speed) if saber_ignited else max(0.0, current_growth - speed)
+
+            raw_blade_len_px = h * 0.65 * current_growth * target_z_scale * foreshortening_factor
+            tx_raw = hx_raw + (v3d_x * raw_blade_len_px)
+            ty_raw = hy_raw + (v3d_y * raw_blade_len_px)
+
+            if first_frame:
+                smooth_hx, smooth_hy = hx_raw, hy_raw
+                smooth_tx, smooth_ty = tx_raw, ty_raw
+                smooth_z_scale = target_z_scale
+                first_frame = False
+            else:
+                smooth_hx = smooth_hx * (1 - alpha) + hx_raw * alpha
+                smooth_hy = smooth_hy * (1 - alpha) + hy_raw * alpha
+                smooth_tx = smooth_tx * (1 - alpha) + tx_raw * alpha
+                smooth_ty = smooth_ty * (1 - alpha) + ty_raw * alpha
+                smooth_z_scale = smooth_z_scale * (1 - alpha) + target_z_scale * alpha
+
             data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
-            sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
+            try: sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
+            except: pass
 
-        # --- HIGH-SPEED CONDITION-BASED VOLUMETRIC RENDERING ---
-        if hand_seen and current_growth > 0 and overlap_state != "Green Overlaps Red":
-            
-            # Find the bounding box limits around the saber track space to target optimization
-            all_x = [smooth_hx, smooth_tx]
-            all_y = [smooth_hy, smooth_ty]
-            
-            pad = int(40 * smooth_z_scale)
-            min_x = max(0, int(min(all_x)) - pad)
-            max_x = min(w, int(max(all_x)) + pad)
-            min_y = max(0, int(min(all_y)) - pad)
-            max_y = min(h, int(max(all_y)) + pad)
-            
-            roi_w = max_x - min_x
-            roi_h = max_y - min_y
-            
-            if roi_w > 0 and roi_h > 0:
-                # Build local canvas patches targeting only the isolated region coordinates
-                glow_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
-                core_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
-                
-                shx_roi, shy_roi = int(smooth_hx - min_x), int(smooth_hy - min_y)
+            # Diagnostic overlays
+            cv2.circle(frame, (int(wrist.x * w), int(wrist.y * h)), 6, (255, 0, 0), cv2.FILLED) 
+            cv2.circle(frame, (int(hx_raw), int(hy_raw)), 6, (0, 0, 255), cv2.FILLED)          
+            cv2.circle(frame, (int(pinky_k.x * w), int(pinky_k.y * h)), 6, (0, 255, 0), cv2.FILLED) 
+            cv2.line(frame, (int(hx_raw), int(hy_raw)), (int(pinky_k.x * w), int(pinky_k.y * h)), (0, 255, 255), 2)
+            cv2.line(frame, (int(wrist.x * w), int(wrist.y * h)), (int(hx_raw), int(hy_raw)), (255, 255, 255), 2)
+    else:
+        if not saber_ignited:
+            current_growth = max(0.0, current_growth - speed)
+        v_dx = smooth_tx - smooth_hx
+        v_dy = smooth_ty - smooth_hy
+        mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+        if mag_smooth > 0:
+            v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
+        else:
+            v_dx, v_dy = 0, -1
+        
+        decayed_len = h * 0.65 * current_growth * smooth_z_scale
+        smooth_tx = smooth_hx + (v_dx * decayed_len)
+        smooth_ty = smooth_hy + (v_dy * decayed_len)
+        
+        data_string = f"{round(smooth_hx,2)},{round(smooth_hy,2)},{round(smooth_z_scale,4)},{round(current_growth,2)},{shoulder_dist_px}"
+        try: sock.sendto(data_string.encode(), (UDP_IP, UDP_PORT))
+        except: pass
 
-                if overlap_state == "Red Overlaps Green":
-                    dot_radius = int(18 * smooth_z_scale)
-                    cv2.circle(glow_roi, (shx_roi, shy_roi), dot_radius * 2, blade_color, -1, cv2.LINE_8)
-                    cv2.circle(core_roi, (shx_roi, shy_roi), int(dot_radius * 0.4), (255, 255, 255), -1, cv2.LINE_8)
+    # --- HIGH-SPEED CONDITION-BASED VOLUMETRIC RENDERING ---
+    if hand_seen and current_growth > 0 and overlap_state != "Green Overlaps Red":
+        all_x = [smooth_hx, smooth_tx]
+        all_y = [smooth_hy, smooth_ty]
+        
+        pad = int(40 * smooth_z_scale)
+        min_x = max(0, int(min(all_x)) - pad)
+        max_x = min(w, int(max(all_x)) + pad)
+        min_y = max(0, int(min(all_y)) - pad)
+        max_y = min(h, int(max(all_y)) + pad)
+        
+        roi_w = max_x - min_x
+        roi_h = max_y - min_y
+        
+        if roi_w > 0 and roi_h > 0:
+            glow_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
+            core_roi = np.zeros((roi_h, roi_w, 3), dtype=np.uint8)
+            shx_roi, shy_roi = int(smooth_hx - min_x), int(smooth_hy - min_y)
+
+            if overlap_state == "Red Overlaps Green":
+                dot_radius = int(18 * smooth_z_scale)
+                cv2.circle(glow_roi, (shx_roi, shy_roi), dot_radius * 2, blade_color, -1, cv2.LINE_8)
+                cv2.circle(core_roi, (shx_roi, shy_roi), int(dot_radius * 0.4), (255, 255, 255), -1, cv2.LINE_8)
+            else:
+                num_segments = 12
+                v_dx = smooth_tx - smooth_hx
+                v_dy = smooth_ty - smooth_hy
+                mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
+                if mag_smooth > 0:
+                    v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
                 else:
-                    num_segments = 12
-                    v_dx = smooth_tx - smooth_hx
-                    v_dy = smooth_ty - smooth_hy
-                    mag_smooth = np.sqrt(v_dx**2 + v_dy**2)
-                    if mag_smooth > 0:
-                        v_dx, v_dy = v_dx / mag_smooth, v_dy / mag_smooth
-                    else:
-                        v_dx, v_dy = 0, -1
+                    v_dx, v_dy = 0, -1
 
-                    total_len = mag_smooth
-                    
-                    # Compute segment anchors locally inside the cropped space patch
-                    points_roi = []
-                    radii = []
-                    for i in range(num_segments + 1):
-                        step = (i / num_segments) * total_len
-                        points_roi.append((int(shx_roi + v_dx * step), int(shy_roi + v_dy * step)))
-                        taper_factor = 1.0 - (i / num_segments) * 0.4
-                        radii.append(max(2, int(14 * smooth_z_scale * taper_factor)))
+                total_len = mag_smooth
+                points_roi = []
+                radii = []
+                for i in range(num_segments + 1):
+                    step = (i / num_segments) * total_len
+                    points_roi.append((int(shx_roi + v_dx * step), int(shy_roi + v_dy * step)))
+                    taper_factor = 1.0 - (i / num_segments) * 0.4
+                    radii.append(max(2, int(14 * smooth_z_scale * taper_factor)))
 
-                    for i in range(num_segments):
-                        pt1 = points_roi[i]
-                        pt2 = points_roi[i+1]
-                        rad = radii[i]
-                        # Optimized standard fast drawing style lines
-                        cv2.line(glow_roi, pt1, pt2, blade_color, rad * 2, cv2.LINE_8)
-                        cv2.line(core_roi, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_8)
+                for i in range(num_segments):
+                    pt1 = points_roi[i]
+                    pt2 = points_roi[i+1]
+                    rad = radii[i]
+                    cv2.line(glow_roi, pt1, pt2, blade_color, rad * 2, cv2.LINE_8)
+                    cv2.line(core_roi, pt1, pt2, (255, 255, 255), max(1, int(rad * 0.3)), cv2.LINE_8)
 
-                # Fast Blur Pipeline: Downscale the small area to a quarter of its size, blur it, and upscale it back
-                ds_w, ds_h = max(1, roi_w // 4), max(1, roi_h // 4)
-                small_glow = cv2.resize(glow_roi, (ds_w, ds_h), interpolation=cv2.INTER_NEAREST)
-                small_blur = cv2.GaussianBlur(small_glow, (5, 5), 0)
-                glow_blur_roi = cv2.resize(small_blur, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
-                
-                saber_composite_roi = cv2.addWeighted(glow_blur_roi, 1.0, core_roi, 1.0, 0)
-                
-                # Apply the blurred local canvas patch cleanly directly on top of the original base canvas frame
-                frame_roi = frame[min_y:max_y, min_x:max_x]
-                frame[min_y:max_y, min_x:max_x] = cv2.add(frame_roi, saber_composite_roi)
+            ds_w, ds_h = max(1, roi_w // 4), max(1, roi_h // 4)
+            small_glow = cv2.resize(glow_roi, (ds_w, ds_h), interpolation=cv2.INTER_NEAREST)
+            small_blur = cv2.GaussianBlur(small_glow, (5, 5), 0)
+            glow_blur_roi = cv2.resize(small_blur, (roi_w, roi_h), interpolation=cv2.INTER_LINEAR)
+            
+            saber_composite_roi = cv2.addWeighted(glow_blur_roi, 1.0, core_roi, 1.0, 0)
+            frame_roi = frame[min_y:max_y, min_x:max_x]
+            frame[min_y:max_y, min_x:max_x] = cv2.add(frame_roi, saber_composite_roi)
 
-        # Performance State Readouts
-        cv2.putText(frame, f"Overlap State: {overlap_state}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        cv2.imshow("Day 3: True 3D Space Projection Pipeline", frame)
+    cv2.putText(frame, f"Overlap State: {overlap_state}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+    return frame
+
+# Local script fallback window execution guard
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    while cap.isOpened():
+        success, img_frame = cap.read()
+        if not success: continue
+        output = process_frame(img_frame)
+        cv2.imshow("Day 3 Local Test Window", output)
         if cv2.waitKey(1) & 0xFF == ord('q'): break
-
-cap.release()
-cv2.destroyAllWindows()
+    cap.release()
+    cv2.destroyAllWindows()
