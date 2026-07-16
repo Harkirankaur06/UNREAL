@@ -1,20 +1,14 @@
 import cv2
 
 # Load the pre-trained Haar Cascades from OpenCV
-# Note: These XML files are built directly into the cv2 library
 eye_glass_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye_tree_eyeglasses.xml')
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
-cap = cv2.VideoCapture(0)
-
-print("Press 'q' to exit.")
-
-while True:
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    frame = cv2.flip(frame, 1)
+# ====================================================================
+# STREAMLIT COMPATIBILITY HOOK (DO NOT TOUCH ORIGINAL LOGIC)
+# ====================================================================
+def process_frame(incoming_frame):
+    frame = cv2.flip(incoming_frame, 1)
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     
     # Track if glasses are detected in the current frame
@@ -49,10 +43,17 @@ while True:
         cv2.putText(display_frame, "SYSTEM SECURE: STARK HUD PASSIVE", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
-    cv2.imshow('Day 5: Smart Thermal Toggle', display_frame)
+    return display_frame
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+# Local script fallback window execution guard
+if __name__ == "__main__":
+    cap = cv2.VideoCapture(0)
+    print("Press 'q' to exit.")
+    while True:
+        ret, img_frame = cap.read()
+        if not ret: break
+        output = process_frame(img_frame)
+        cv2.imshow('Day 5: Smart Thermal Toggle', output)
+        if cv2.waitKey(1) & 0xFF == ord('q'): break
+    cap.release()
+    cv2.destroyAllWindows()
