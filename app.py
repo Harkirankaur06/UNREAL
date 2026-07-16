@@ -6,10 +6,10 @@ import importlib.util
 import os
 
 # ====================================================================
-# 1. HIGH-END INTERFACE STYLING (Custom Modern Dark Theme CSS)
+# 1. BRILLIANT INTERFACE STYLING (Custom Modern Dark Theme CSS)
 # ====================================================================
 st.set_page_config(
-    page_title="UNREAL: Real-Time Web-AR Engine",
+    page_title="VISION PORTAL: Real-Time Web-AR Engine",
     page_icon="🔮",
     layout="wide"
 )
@@ -52,7 +52,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="app-title">🔮 UNREAL Engine</h1>', unsafe_allow_html=True)
+# App UI Header Area
+st.markdown('<h1 class="app-title">🔮 VISION PORTAL</h1>', unsafe_allow_html=True)
 st.markdown('<div><span class="badge">30-Day Web-AR & Computer Vision Challenge</span></div>', unsafe_allow_html=True)
 st.markdown("---")
 
@@ -105,12 +106,21 @@ def execute_external_filter(module_name, frame):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        # Look for standard entrypoints inside your scripts (e.g., process_frame, apply_filter, or main)
+        # First check if the file uses a Class architecture (like the new Day 1)
+        # Class-based check (looks for dynamic instance generation)
+        class_name = f"{module_name.capitalize()}LevitationEngine" if "day1" in module_name else None
+        if class_name and hasattr(module, class_name):
+            # Cache the engine instance in Streamlit session state so tracking memory persists between frames
+            state_key = f"engine_{module_name}"
+            if state_key not in st.session_state:
+                st.session_state[state_key] = getattr(module, class_name)()
+            return st.session_state[state_key].process_frame(frame)
+
+        # Function-based check (fallback to global functions like process_frame or apply_filter)
         for target_fn in ["process_frame", "apply_filter", "process", "filter"]:
             if hasattr(module, target_fn):
                 return getattr(module, target_fn)(frame)
         
-        # If your script has a raw process function or runs sequentially, fall back gracefully
         return None
     except Exception as e:
         return None
@@ -153,7 +163,7 @@ col_video, col_docs = st.columns([2, 1])
 with col_video:
     st.markdown("#### 📽️ Live AR Canvas Feed")
     webrtc_streamer(
-        key="unreal-web-ar-engine",
+        key="vision-portal-streamer",
         video_frame_callback=process_video_frame,
         media_stream_constraints={"video": True, "audio": False},
         rtc_configuration=RTCConfiguration(
@@ -173,4 +183,4 @@ with col_docs:
     """)
 
 st.markdown("---")
-st.markdown("🤖 *Developed under the **UNREAL Engine Framework Architecture Blueprint** Portfolio Module.*")
+st.markdown("🤖 *Developed under the **Vision Portal Framework Architecture Blueprint** Portfolio Module.*")
