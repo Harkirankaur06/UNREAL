@@ -11,7 +11,7 @@ import cv2
 import importlib.util
 
 # ====================================================================
-# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Layout Configuration)
+# 1. PREMIUM INTERFACE DESIGN (Clean Sidebar and Typography)
 # ====================================================================
 st.set_page_config(
     page_title="VISION PORTAL: Real-Time Web-AR Engine",
@@ -54,12 +54,6 @@ st.markdown("""
         display: inline-block;
         margin-top: 5px;
     }
-    iframe, video {
-        border-radius: 12px;
-        border: 1px solid #3d2b7a;
-        max-width: 100% !important;
-        height: auto !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -81,7 +75,6 @@ CORE_CHALLENGES = {
     "Day 8: Project Shattered Reality 🧩": "day8",
 }
 
-# Auto-generate sandbox placeholder spaces for upcoming timeline metrics
 for day in range(9, 31):
     CORE_CHALLENGES[f"Day {day}: Upcoming Active Challenge Slot ⏳"] = f"day{day}"
 
@@ -109,13 +102,9 @@ st.sidebar.link_button(
 )
 
 # ====================================================================
-# 3. RUNTIME GLOBAL CACHE DISPATCH ENGINE (Fixes Thread Hanging)
+# 3. RUNTIME GLOBAL CACHE DISPATCH ENGINE
 # ====================================================================
 def get_or_load_module(module_name):
-    """
-    Safely compiles standalone script logic assets into memory session states
-    once per selection switch to avoid background blocking frame delays.
-    """
     state_key = f"mod_{module_name}"
     if state_key in st.session_state:
         return st.session_state[state_key]
@@ -130,7 +119,6 @@ def get_or_load_module(module_name):
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
-        # Class Engine Factory Instantiation Check (Day 1, 2, and Cake)
         engine_instance = None
         if module_name == "day1" and hasattr(module, "Day1LevitationEngine"):
             engine_instance = getattr(module, "Day1LevitationEngine")()
@@ -139,7 +127,6 @@ def get_or_load_module(module_name):
         elif module_name == "cake" and hasattr(module, "CakeGlowEngine"):
             engine_instance = getattr(module, "CakeGlowEngine")()
 
-        # Save class engine reference or pass the module object itself for function routing
         st.session_state[state_key] = engine_instance if engine_instance else module
         return st.session_state[state_key]
     except Exception:
@@ -152,16 +139,13 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
     h, w, _ = img.shape
 
-    # Grab the loaded operational script asset out of the cache registry
     loaded_asset = get_or_load_module(active_module_target)
     processed_img = None
 
     if loaded_asset is not None:
         try:
-            # Route 1: Direct Class Engine Processing Pipeline Check (.process_frame)
             if hasattr(loaded_asset, "process_frame"):
                 processed_img = loaded_asset.process_frame(img)
-            # Route 2: Standalone Global Function Pipeline Call Check
             else:
                 for target_fn in ["process_frame", "apply_filter", "process", "filter"]:
                     if hasattr(loaded_asset, target_fn):
@@ -171,10 +155,9 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
             pass
 
     if processed_img is None:
-        # Fallback display layout if script code asset returns None or is missing
         cv2.putText(img, f"Active Sandbox Slot: {selected_display_name.split(':')[0]}", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
-        cv2.putText(img, f"Awaiting script linkage injection inside {active_module_target}.py", (20, h - 30), 
+        cv2.putText(img, f"Awaiting script linkage inside {active_module_target}.py", (20, h - 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
     else:
         img = processed_img
