@@ -1,13 +1,17 @@
+import sys
+import os
+
+# Headless server environment stabilization guard
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, RTCConfiguration
 import av
 import cv2
 import importlib.util
-import os
-import sys
 
 # ====================================================================
-# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Layout)
+# 1. PREMIUM INTERFACE DESIGN (Mobile-Responsive Layout Configuration)
 # ====================================================================
 st.set_page_config(
     page_title="VISION PORTAL: Real-Time Web-AR Engine",
@@ -64,22 +68,22 @@ st.markdown('<div><span class="badge">30-Day Web-AR & Computer Vision Challenge<
 st.markdown("---")
 
 # ====================================================================
-# 2. EXACT LINKEDIN CHALLENGE MATCHING MATRIX
+# 2. MATCHED LINKEDIN CHALLENGE INDEX MAP
 # ====================================================================
 CORE_CHALLENGES = {
-    "Day 1: Continuous Live Isolation Studio 🛸": "day1",
-    "Day 2: Quantum Collapse Anomaly / Timeline Breach 🌀": "day2",
-    "Day 3: True 3D Space Projection Saber Pipeline ⚔️": "day3",
-    "Day 4: Robust Expression Trigger / Hulk Mutation Matrix 🦖": "day4",
-    "Day 5: Smart Thermal Toggle / Stark HUD Active 🕶️": "day5",
-    "Day 6: Disney Sparkle Wand / Pixie Dust Trail Pipeline ✨": "day6",
-    "Day 7: Twilight Vampire Skin / Sunlight Shimmer Trigger 💎": "day7",
-    "Day 8: Live Cam Swap Grid Puzzle Game 🧩": "day8",
+    "Day 1: Project Wingardium Leviosa 🛸": "day1",
+    "Day 2: Project Go Home 🌀": "day2",
+    "Day 3: Project Jedi ⚔️": "day3",
+    "Day 4: Project Gamma 🦖": "day4",
+    "Day 5: Project E.D.I.T.H. 🕶️": "day5",
+    "Day 6: Project Bipity Bopity Boo ✨": "day6",
+    "Day 7: Project Skin of the Killer 💎": "day7",
+    "Day 8: Project Shattered Reality 🧩": "day8",
 }
 
-# Auto-generate placeholders for the upcoming sandbox challenge spaces
+# Auto-generate sandbox placeholder spaces for upcoming timeline metrics
 for day in range(9, 31):
-    CORE_CHALLENGES[f"Day {day}: Upcoming Sandbox Active Slot ⏳"] = f"day{day}"
+    CORE_CHALLENGES[f"Day {day}: Upcoming Active Challenge Slot ⏳"] = f"day{day}"
 
 EXTRA_LAYERS = {
     "Extra: Clean Neon Cake Engine 🎂": "cake",
@@ -105,12 +109,12 @@ st.sidebar.link_button(
 )
 
 # ====================================================================
-# 3. RUNTIME GLOBAL CACHE LOAD MANAGER (Fixes Script Crashes)
+# 3. RUNTIME GLOBAL CACHE DISPATCH ENGINE (Fixes Thread Hanging)
 # ====================================================================
 def get_or_load_module(module_name):
     """
-    Safely imports the standalone files once per selection and caches their 
-    execution states so tracking matrices do not drop between frames.
+    Safely compiles standalone script logic assets into memory session states
+    once per selection switch to avoid background blocking frame delays.
     """
     state_key = f"mod_{module_name}"
     if state_key in st.session_state:
@@ -126,7 +130,7 @@ def get_or_load_module(module_name):
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
 
-        # Dynamic Engine Instance Factory mapping (Day 1, 2 & Cake rely on classes)
+        # Class Engine Factory Instantiation Check (Day 1, 2, and Cake)
         engine_instance = None
         if module_name == "day1" and hasattr(module, "Day1LevitationEngine"):
             engine_instance = getattr(module, "Day1LevitationEngine")()
@@ -135,7 +139,7 @@ def get_or_load_module(module_name):
         elif module_name == "cake" and hasattr(module, "CakeGlowEngine"):
             engine_instance = getattr(module, "CakeGlowEngine")()
 
-        # Save class engine reference or fall back straight to function references
+        # Save class engine reference or pass the module object itself for function routing
         st.session_state[state_key] = engine_instance if engine_instance else module
         return st.session_state[state_key]
     except Exception:
@@ -148,16 +152,16 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
     h, w, _ = img.shape
 
-    # Retrieve cached execution handle context
+    # Grab the loaded operational script asset out of the cache registry
     loaded_asset = get_or_load_module(active_module_target)
     processed_img = None
 
     if loaded_asset is not None:
         try:
-            # Route 1: Class-based frame mutation loops (.process_frame)
+            # Route 1: Direct Class Engine Processing Pipeline Check (.process_frame)
             if hasattr(loaded_asset, "process_frame"):
                 processed_img = loaded_asset.process_frame(img)
-            # Route 2: Global function-based hook loops (process_frame/apply_filter)
+            # Route 2: Standalone Global Function Pipeline Call Check
             else:
                 for target_fn in ["process_frame", "apply_filter", "process", "filter"]:
                     if hasattr(loaded_asset, target_fn):
@@ -167,10 +171,10 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
             pass
 
     if processed_img is None:
-        # Fallback layer screen if target script asset is missing or empty
+        # Fallback display layout if script code asset returns None or is missing
         cv2.putText(img, f"Active Sandbox Slot: {selected_display_name.split(':')[0]}", (20, 40), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
-        cv2.putText(img, f"Awaiting script linkage inside {active_module_target}.py", (20, h - 30), 
+        cv2.putText(img, f"Awaiting script linkage injection inside {active_module_target}.py", (20, h - 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
     else:
         img = processed_img
