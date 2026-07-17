@@ -1,17 +1,16 @@
 import sys
 import os
 
-# Headless server environment stabilization guard
+# Headless server display stabilization configuration
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, RTCConfiguration
 import av
 import cv2
-import importlib.util
 
 # ====================================================================
-# 1. PREMIUM INTERFACE DESIGN (Clean Sidebar and Typography)
+# 1. PREMIUM PORTAL INTERFACE DESIGN
 # ====================================================================
 st.set_page_config(
     page_title="VISION PORTAL: Real-Time Web-AR Engine",
@@ -62,7 +61,7 @@ st.markdown('<div><span class="badge">30-Day Web-AR & Computer Vision Challenge<
 st.markdown("---")
 
 # ====================================================================
-# 2. MATCHED LINKEDIN CHALLENGE INDEX MAP
+# 2. CHALLENGE SELECTOR MATRIX MAP
 # ====================================================================
 CORE_CHALLENGES = {
     "Day 1: Project Wingardium Leviosa 🛸": "day1",
@@ -75,6 +74,7 @@ CORE_CHALLENGES = {
     "Day 8: Project Shattered Reality 🧩": "day8",
 }
 
+# Sandboxed placeholder extensions for upcoming days
 for day in range(9, 31):
     CORE_CHALLENGES[f"Day {day}: Upcoming Active Challenge Slot ⏳"] = f"day{day}"
 
@@ -92,9 +92,90 @@ selected_display_name = st.sidebar.selectbox(
 )
 active_module_target = ALL_LAYERS[selected_display_name]
 
+# ====================================================================
+# 3. STATICS STATIC IMPORT LAYER (Bypasses Reloader Failures)
+# ====================================================================
+def initialize_engine_instance(name):
+    """
+    Directly binds and instantiates modules inside the persistent state context
+    to completely avoid path resolution drops on Streamlit Cloud servers.
+    """
+    state_key = f"engine_active_{name}"
+    if state_key in st.session_state:
+        return st.session_state[state_key]
+
+    try:
+        # Import target modules directly from your workspace directory root
+        if name == "day1":
+            import day1
+            instance = day1.Day1LevitationEngine()
+        elif name == "day2":
+            import day2
+            instance = day2.Day2QuantumEngine()
+        elif name == "day3":
+            import day3
+            instance = day3
+        elif name == "day4":
+            import day4
+            instance = day4
+        elif name == "day5":
+            import day5
+            instance = day5
+        elif name == "day6":
+            import day6
+            instance = day6
+        elif name == "day7":
+            import day7
+            instance = day7
+        elif name == "day8":
+            import day8
+            instance = day8
+        elif name == "cake":
+            import cake
+            instance = cake.CakeGlowEngine()
+        elif name == "water effect":
+            import water_effect
+            instance = water_effect
+        else:
+            return None
+
+        st.session_state[state_key] = instance
+        return instance
+    except Exception as error_msg:
+        st.sidebar.error(f"Module structural link error: {error_msg}")
+        return None
+
+# Trigger instantiation immediately
+active_engine = initialize_engine_instance(active_module_target)
+
+# ====================================================================
+# 4. SIDEBAR LOGIC INTERACT BUTTONS (Day 1 & 2 Only)
+# ====================================================================
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 📈 Live Challenge Progress")
-st.sidebar.info("💡 Days 09-30 are dropping daily as the implementation architecture expands on LinkedIn.")
+st.sidebar.markdown("### 🛠️ Live Engine Interactions")
+
+if active_module_target == "day1" and active_engine:
+    if st.sidebar.button("1. Lock Clean Background"):
+        st.session_state["day1_signal"] = "lock_bg"
+    if st.sidebar.button("2. GrabCut Select (Center Frame Bounds)"):
+        st.session_state["day1_signal"] = "grabcut"
+    if st.sidebar.button("3. Launch Hover Matrix"):
+        st.session_state["day1_signal"] = "hover"
+    if st.sidebar.button("Reset Dynamic Workspace"):
+        st.session_state["day1_signal"] = "reset"
+
+elif active_module_target == "day2" and active_engine:
+    if st.sidebar.button("1. Cache Room Empty"):
+        st.session_state["day2_signal"] = "lock_bg"
+    if st.sidebar.button("2. Trigger Breach (Start Anomaly)"):
+        st.session_state["day2_signal"] = "anomaly"
+    if st.sidebar.button("Reset Anomaly Registers"):
+        st.session_state["day2_signal"] = "reset"
+
+else:
+    st.sidebar.info("⚡ Real-time pixel processing layer engaged. No manual control signals required.")
+
+st.sidebar.markdown("---")
 st.sidebar.link_button(
     "🔗 Follow My Daily Updates on LinkedIn", 
     "https://www.linkedin.com/in/harkiran-kaur-/",
@@ -102,70 +183,73 @@ st.sidebar.link_button(
 )
 
 # ====================================================================
-# 3. RUNTIME GLOBAL CACHE DISPATCH ENGINE
-# ====================================================================
-def get_or_load_module(module_name):
-    state_key = f"mod_{module_name}"
-    if state_key in st.session_state:
-        return st.session_state[state_key]
-
-    target_file = f"{module_name}.py"
-    if not os.path.exists(target_file):
-        return None
-
-    try:
-        spec = importlib.util.spec_from_file_location(module_name, target_file)
-        module = importlib.util.module_from_spec(spec)
-        sys.modules[module_name] = module
-        spec.loader.exec_module(module)
-
-        engine_instance = None
-        if module_name == "day1" and hasattr(module, "Day1LevitationEngine"):
-            engine_instance = getattr(module, "Day1LevitationEngine")()
-        elif module_name == "day2" and hasattr(module, "Day2QuantumEngine"):
-            engine_instance = getattr(module, "Day2QuantumEngine")()
-        elif module_name == "cake" and hasattr(module, "CakeGlowEngine"):
-            engine_instance = getattr(module, "CakeGlowEngine")()
-
-        st.session_state[state_key] = engine_instance if engine_instance else module
-        return st.session_state[state_key]
-    except Exception:
-        return None
-
-# ====================================================================
-# 4. ASYNCHRONOUS PIPELINE FRAME ROUTING
+# 5. HIGH-SPEED FRAME CONTEXT HANDLING OVERRIDE
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
     h, w, _ = img.shape
 
-    loaded_asset = get_or_load_module(active_module_target)
-    processed_img = None
-
-    if loaded_asset is not None:
+    if active_engine is not None:
         try:
-            if hasattr(loaded_asset, "process_frame"):
-                processed_img = loaded_asset.process_frame(img)
-            else:
-                for target_fn in ["process_frame", "apply_filter", "process", "filter"]:
-                    if hasattr(loaded_asset, target_fn):
-                        processed_img = getattr(loaded_asset, target_fn)(img)
-                        break
-        except Exception:
-            pass
+            # Handle manual state machine injections for Day 1
+            if active_module_target == "day1":
+                sig = st.session_state.get("day1_signal", None)
+                if sig == "lock_bg":
+                    active_engine.trigger_bg_lock(img)
+                    st.session_state["day1_signal"] = None
+                elif sig == "grabcut":
+                    active_engine.trigger_grabcut_init(img, (w // 4, h // 4, w // 2, h // 2))
+                    st.session_state["day1_signal"] = None
+                elif sig == "hover":
+                    active_engine.trigger_hover()
+                    st.session_state["day1_signal"] = None
+                elif sig == "reset":
+                    active_engine.trigger_reset()
+                    st.session_state["day1_signal"] = None
+                
+                img = active_engine.process_frame(img)
 
-    if processed_img is None:
-        cv2.putText(img, f"Active Sandbox Slot: {selected_display_name.split(':')[0]}", (20, 40), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
-        cv2.putText(img, f"Awaiting script linkage inside {active_module_target}.py", (20, h - 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+            # Handle manual state machine injections for Day 2
+            elif active_module_target == "day2":
+                sig = st.session_state.get("day2_signal", None)
+                if sig == "lock_bg":
+                    active_engine.lock_clean_background(img)
+                    st.session_state["day2_signal"] = None
+                elif sig == "anomaly":
+                    active_engine.trigger_anomaly()
+                    st.session_state["day2_signal"] = None
+                elif sig == "reset":
+                    active_engine.trigger_reset()
+                    st.session_state["day2_signal"] = None
+                
+                img = active_engine.process_frame(img)
+
+            # Route Cake engine class instance parameters
+            elif active_module_target == "cake":
+                img = active_engine.process_frame(img)
+
+            # Route functional code frames straight to global execution channels
+            else:
+                for hook_fn in ["process_frame", "apply_filter", "process", "filter"]:
+                    if hasattr(active_engine, hook_fn):
+                        img = getattr(active_engine, hook_fn)(img)
+                        break
+        except Exception as runtime_error:
+            # Prevent frame loop breakage on errors: write trace debug to output canvas
+            cv2.putText(img, f"RUNTIME ENG ERR: {str(runtime_error)[:30]}", (20, h - 30),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 0, 255), 1)
+
     else:
-        img = processed_img
+        # Code asset file path check backup prompt screen
+        cv2.putText(img, f"PORTAL LAYER: {selected_display_name.split(':')[0]}", (20, 40), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 240, 255), 2)
+        cv2.putText(img, f"Awaiting code deployment for mapping keyword '{active_module_target}.py'", (20, h - 30), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
 
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
-# 5. WebRTC HARDWARE LOOP
+# 6. WebRTC CANVAS MOUNT ENGINE LAYER WITH NATIVE RECORDER
 # ====================================================================
 col_video, col_docs = st.columns([2, 1])
 
@@ -174,6 +258,7 @@ with col_video:
     webrtc_streamer(
         key="vision-portal-streamer",
         video_frame_callback=process_video_frame,
+        sendback_audio=False,
         media_stream_constraints={
             "video": {
                 "width": {"ideal": 640},
@@ -195,9 +280,9 @@ with col_docs:
     st.metric(label="System Pipeline State", value="Active Ingress", delta="Asynchronous Hook")
     st.markdown("""
     **Core Platform Specifications:**
-    *   **Architecture:** Dynamic module compilation isolation, keeping separate tracking coordinates safely contained.
-    *   **Hardware Interface Optimization:** Explicit video tracking constraints designed to secure stable connection authorization loops on iOS/Android mobile architectures.
-    *   **Isolation Architecture:** Heavy frame processing operations offloaded asynchronously to background worker loops to prevent UI stutters.
+    *   **Architecture:** Explicit component mapping structure built to guarantee bulletproof cloud application runtimes.
+    *   **State Machine Bridges:** Context variables and interactions safely isolated behind side-panel buttons strictly on designated challenge scopes.
+    *   **Zero-Lag Capture Architecture:** High frame rate rendering profiles allowing effortless local screen captures or desktop media generation.
     """)
 
 st.markdown("---")
