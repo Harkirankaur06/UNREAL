@@ -1,157 +1,172 @@
 import cv2
 import numpy as np
 from ultralytics import YOLO
-import time
+import random
 import math
 
-# Load the vision engines natively supported by Python 3.13
-seg_model = YOLO('yolov8n-seg.pt')
+# Load the lightning-fast YOLOv8 Pose estimation AI model
 pose_model = YOLO('yolov8n-pose.pt')
 
 cap = cv2.VideoCapture(0)
 
-background_frame = None
-ripple_centers = []  # List to track active touch points [(x, y, time_elapsed), ...]
+# Running frame tracking for movement delta
+prev_frame = None
+chaos_particles = []
+time_clock = 0.0
 
-# --- STEP 1: LEARN THE BACKGROUND ---
-print("\n[STEP 1] Calibrating empty room background. Please STEP OUT OF THE FRAME for 3 seconds...")
-time.sleep(1)
+# AI Spell Triggers
+spell_active = False
+hex_blast_radius = 0.0  # Expands outward across the screen upon trigger release
 
-calibrating = True
-start_time = time.time()
-while calibrating and cap.isOpened():
-    ret, frame = cap.read()
-    if not ret: break
-    frame = cv2.flip(frame, 1)
-    
-    elapsed = time.time() - start_time
-    countdown = 3 - int(elapsed)
-    
-    display_frame = frame.copy()
-    if countdown > 0:
-        cv2.putText(display_frame, f"CALIBRATING CHROME LAB IN {countdown}...", (30, 60), 
-                    cv2.FONT_HERSHEY_TRIPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
-    else:
-        background_frame = frame.copy()
-        calibrating = False
-        
-    cv2.imshow('T-1000 Liquid Metal Engine', display_frame)
-    if cv2.waitKey(1) & 0xFF == ord('q'): break
+print("🔮 AI Hex Trigger Online. Cross your wrists over your chest to cast! Press 'q' to quit.")
 
-print("[STEP 2] Calibration Complete! Step into the frame.")
-print("Touch your body with either hand to disrupt the liquid chrome lattice structure.")
-
-# --- STEP 2: METALLIC TEXTURING & INTERACTIVE RIPPLE DISPLACEMENT ---
 while cap.isOpened():
     ret, frame = cap.read()
     if not ret: break
     
     frame = cv2.flip(frame, 1)
     h, w, c = frame.shape
+    time_clock += 0.5
     
-    # 1. RUN DETECTION IN PARALLEL
-    seg_results = seg_model(frame, verbose=False)
+    # 1. RUN AI SKELETAL POSE TRACKING
     pose_results = pose_model(frame, verbose=False)
     
-    # Generate empty layout structures
-    body_mask = np.zeros((h, w), dtype=np.uint8)
-    fingertips = []
+    # Reset tracking flags unless sustained by AI detection
+    ai_triggered = False
+    blast_center = (w // 2, h // 2)
     
-    # Extract structural body mask from segmentation model
-    if seg_results[0].masks is not None:
-        for result in seg_results[0]:
-            if int(result.boxes.cls[0]) == 0:  # Human class tag
-                seg_mask = result.masks.data[0].cpu().numpy()
-                body_mask = (cv2.resize(seg_mask, (w, h)) > 0.5).astype(np.uint8) * 255
-                break
-                
-    # Extract skeletal tracking nodes for left and right wrists/fingertips
     if pose_results[0].keypoints is not None and len(pose_results[0].keypoints.data) > 0:
-        keypoints = pose_results[0].keypoints.data[0].cpu().numpy()
-        if len(keypoints) > 10:
-            # Index 9 = Left Wrist, Index 10 = Right Wrist (serving as touch pointers)
-            if keypoints[9][2] > 0.5: fingertips.append((int(keypoints[9][0]), int(keypoints[9][1])))
-            if keypoints[10][2] > 0.5: fingertips.append((int(keypoints[10][0]), int(keypoints[10][1])))
+        # Keypoints: 5=L_Shoulder, 6=R_Shoulder, 9=L_Wrist, 10=R_Wrist
+        kp = pose_results[0].keypoints.data[0].cpu().numpy()
+        
+        if len(kp) > 10:
+            # Extract absolute coordinates and tracking confidence scores
+            l_shldr, r_shldr = kp[5][:2], kp[6][:2]
+            l_wrist, r_wrist = kp[9][:2], kp[10][:2]
+            conf = [kp[5][2], kp[6][2], kp[9][2], kp[10][2]]
+            
+            # Ensure the AI has a high confidence lock on all 4 control points
+            if all(c > 0.55 for c in conf):
+                # AI Geometric Calculation: Check if wrists have crossed the midline axis
+                if l_wrist[0] > r_shldr[0] and r_wrist[0] < l_shldr[0]:
+                    # Check vertical proximity to confirm they are crossed near chest level
+                    wrist_distance = math.hypot(l_wrist[0] - r_wrist[0], l_wrist[1] - r_wrist[1])
+                    if wrist_distance < 80:
+                        ai_triggered = True
+                        spell_active = True
+                        # Anchor the explosion origin point right between your crossed hands
+                        blast_center = (int((l_wrist[0] + r_wrist[0]) / 2), int((l_wrist[1] + r_wrist[1]) / 2))
 
-    # 2. CHECK FOR BODY INTERSECTION TOUCH EVENTS
-    for tx, ty in fingertips:
-        if 0 <= tx < w and 0 <= ty < h:
-            # If the tracking point sits inside your body mask silhouette
-            if body_mask[ty, tx] > 0:
-                # Add a new ripple trigger event with local time tracker
-                # Distance threshold protects the array from overflowing too fast
-                if not any(math.hypot(tx - r[0], ty - r[1]) < 25 for r in ripple_centers):
-                    ripple_centers.append([tx, ty, 0.0])
+    # Handle the expanding shockwave progression upon activation
+    if spell_active:
+        if ai_triggered:
+            # Charge state: Keep the explosion primed at the hands
+            hex_blast_radius = 30.0
+        else:
+            # Release state: The shockwave violently explodes outward across the screen
+            hex_blast_radius += 35.0
+            if hex_blast_radius > max(h, w) * 1.5:
+                spell_active = False
+                hex_blast_radius = 0.0
 
-    # 3. COMPOSITE LIQUID METAL RIPPLE EFFECTS
-    # Default window displays the background frame
-    output_frame = background_frame.copy() if background_frame is not None else frame.copy()
+    # 2. OPTIMIZED MOVEMENT DETECTION
+    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray_frame = cv2.GaussianBlur(gray_frame, (21, 21), 0)
+    if prev_frame is None:
+        prev_frame = gray_frame
+        continue
+    frame_delta = cv2.absdiff(prev_frame, gray_frame)
+    _, motion_mask = cv2.threshold(frame_delta, 22, 255, cv2.THRESH_BINARY)
+    motion_mask = cv2.dilate(motion_mask, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)), iterations=2)
+    motion_mask_blur = cv2.GaussianBlur(motion_mask, (15, 15), 0)
+    prev_frame = gray_frame
+
+    # 3. ADVANCED FLUID COMPOSITING SHADER
+    map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
+    map_x = map_x.astype(np.float32)
+    map_y = map_y.astype(np.float32)
     
-    if np.any(body_mask > 0):
-        # A. CHROME TEXTURE SHADER GENERATION
-        # Convert your body feed into high-contrast grayscale
-        gray_body = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        
-        # Solarization loop: Creates extreme metallic specular highlights
-        chrome_gray = np.where(gray_body < 128, gray_body * 2, 255 - ((gray_body - 128) * 2))
-        chrome_gray = cv2.GaussianBlur(chrome_gray.astype(np.uint8), (5, 5), 0)
-        
-        # Remap single grayscale channel into 3-channel BGR liquid chrome texture
-        chrome_texture = cv2.merge([
-            cv2.equalizeHist(chrome_gray), # Deep lowlights
-            cv2.add(chrome_gray, 30),      # Ambient glow midtones
-            cv2.add(chrome_gray, 60)       # Direct chrome peaks
-        ])
-        
-        # B. RIPPLE MATHEMATICAL DISPLACEMENT MAP
-        # Create map matrices to shift individual pixel lookups dynamically
-        map_x, map_y = np.meshgrid(np.arange(w), np.arange(h))
-        map_x = map_x.astype(np.float32)
-        map_y = map_y.astype(np.float32)
-        
-        # Advance clock parameters for active ripples
-        active_ripples = []
-        for r in ripple_centers:
-            cx, cy, t = r
-            t += 0.4  # Velocity speed of the wave spreading out
-            if t < 25.0:  # Life decay parameter threshold
-                active_ripples.append([cx, cy, t])
-                
-                # Math shader: Calculate vector distance of every pixel to the drop source point
-                dx_matrix = map_x - cx
-                dy_matrix = map_y - cy
-                dist_matrix = np.sqrt(dx_matrix**2 + dy_matrix**2)
-                
-                # Apply sine-wave offset equations to create localized visual shifting
-                # Frequency set by division factor, amplitude modulated by time dampening
-                wave = np.sin(dist_matrix / 6.0 - t) * (12.0 / (t + 1.0))
-                
-                # Mask out calculation zones so distortions only apply inside active radial bounds
-                ripple_mask = (dist_matrix < (t * 12.0)) & (dist_matrix > 0)
-                map_x[ripple_mask] += (dx_matrix[ripple_mask] / dist_matrix[ripple_mask]) * wave[ripple_mask]
-                map_y[ripple_mask] += (dy_matrix[ripple_mask] / dist_matrix[ripple_mask]) * wave[ripple_mask]
-                
-        ripple_centers = active_ripples
-        
-        # Warp the chrome skin texture using the compiled displacement map
-        displaced_chrome = cv2.remap(chrome_texture, map_x, map_y, cv2.INTER_LINEAR)
-        
-        # C. MASK OVERLAY & BLENDING
-        # Cut the final displaced chrome out utilizing the human mask
-        chrome_body = cv2.bitwise_and(displaced_chrome, displaced_chrome, mask=body_mask)
-        bg_cutout = cv2.bitwise_and(output_frame, output_frame, mask=cv2.bitwise_not(body_mask))
-        
-        # Fuse the reflective metallic figure into the static environment
-        output_frame = cv2.add(chrome_body, bg_cutout)
-        
-    cv2.imshow('T-1000 Liquid Metal Engine', output_frame)
+    # Dynamic Math Vector: Calculate displacement offsets for every single pixel
+    dx_mat = map_x - blast_center[0]
+    dy_mat = map_y - blast_center[1]
+    dist_mat = np.sqrt(dx_mat**2 + dy_mat**2) + 0.1
     
-    key = cv2.waitKey(1) & 0xFF
-    if key == ord('r'):
-        ripple_centers = []
-        print("Lattice pattern stabilized. All ripples dissolved.")
-    elif key == ord('q'):
-        break
+    # Default structural wave mapping (Standard live movement trailing)
+    fluid_x = np.sin(map_y / 15.0 + time_clock) * np.cos(map_x / 30.0) * 16.0
+    fluid_y = np.cos(map_x / 15.0 + time_clock) * np.sin(map_y / 30.0) * 16.0
+    intensity = motion_mask_blur / 255.0
+    
+    # CRITICAL WARP OVERRIDE: Inject massive shockwave distortion if the Hex Blast is rolling out
+    if spell_active:
+        # Create a concentrated wave ring expanding outwards
+        wave_front = np.exp(-((dist_mat - hex_blast_radius) ** 2) / 1600.0)
+        # Pull or push pixels along the radial blast trajectory
+        fluid_x += (dx_mat / dist_mat) * wave_front * 70.0
+        fluid_y += (dy_mat / dist_mat) * wave_front * 70.0
+        intensity = np.clip(intensity + wave_front, 0.0, 1.0)
+        
+    map_x += fluid_x * intensity
+    map_y += fluid_y * intensity
+    output_frame = cv2.remap(frame, map_x, map_y, cv2.INTER_LINEAR)
+
+    # 4. CHROMATIC HEX LAYER MERGE
+    b, g, r_ch = cv2.split(output_frame)
+    r_boost = cv2.add(r_ch, (intensity * 110).astype(np.uint8))
+    g_dim = cv2.subtract(g, (intensity * 60).astype(np.uint8))
+    b_dim = cv2.subtract(b, (intensity * 30).astype(np.uint8))
+    output_frame = cv2.merge([b_dim, g_dim, r_boost])
+
+    # 5. DYNAMIC PARTICLE SPAWNER
+    # Spawn continuous trails on motion or a massive ring burst on blast
+    if spell_active and not ai_triggered:
+        # Generate ring explosion particles along the expanding shockwave front
+        for _ in range(15):
+            angle = random.uniform(0, 2 * math.pi)
+            p_dist = hex_blast_radius + random.uniform(-10, 10)
+            px = blast_center[0] + math.cos(angle) * p_dist
+            py = blast_center[1] + math.sin(angle) * p_dist
+            if 0 <= px < w and 0 <= py < h and len(chaos_particles) < 500:
+                chaos_particles.append({
+                    'x': float(px), 'y': float(py),
+                    'vx': math.cos(angle) * random.uniform(2, 5),
+                    'vy': math.sin(angle) * random.uniform(2, 5) - 1.0,
+                    'life': random.randint(20, 35),
+                    'radius': random.randint(4, 12)
+                })
+
+    # Standard engine particle emitter loop
+    motion_pts = np.argwhere(motion_mask > 0)
+    if len(motion_pts) > 0 and len(chaos_particles) < 300:
+        sample_size = min(len(motion_pts), 6)
+        for idx in random.sample(range(len(motion_pts)), sample_size):
+            y, x = motion_pts[idx]
+            chaos_particles.append({
+                'x': float(x), 'y': float(y),
+                'vx': random.uniform(-3.0, 3.0), 'vy': random.uniform(-5.0, -1.0),
+                'life': random.randint(15, 25), 'radius': random.randint(3, 8)
+            })
+
+    # Draw and update particles
+    for p in chaos_particles[:]:
+        p['vx'] += math.sin(p['y'] / 12.0 + time_clock) * 0.4
+        p['x'] += p['vx']
+        p['y'] += p['vy']
+        p['life'] -= 1
+        if 0 <= p['x'] < w and 0 <= p['y'] < h and p['life'] > 0:
+            alpha = p['life'] / 35.0
+            overlay = output_frame.copy()
+            cv2.circle(overlay, (int(p['x']), int(p['y'])), p['radius'], (int(30*alpha), int(5*alpha), int(245*alpha)), -1)
+            cv2.addWeighted(overlay, 0.5 * alpha, output_frame, 1.0 - (0.5 * alpha), 0, output_frame)
+        else:
+            chaos_particles.remove(p)
+
+    # UI Banner Notification
+    if ai_triggered:
+        cv2.putText(output_frame, "AI SPELL LOCK: CHARGING HEX CORE...", (30, 50), 
+                    cv2.FONT_HERSHEY_TRIPLEX, 0.65, (0, 255, 255), 2, cv2.LINE_AA)
+    
+    cv2.imshow("Wanda's Chaos Core (AI Triggered)", output_frame)
+    if cv2.waitKey(1) & 0xFF == ord('q'): break
 
 cap.release()
 cv2.destroyAllWindows()
