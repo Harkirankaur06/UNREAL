@@ -8,31 +8,39 @@ from streamlit_webrtc import webrtc_streamer, RTCConfiguration
 import av
 import urllib.request
 
+# Headless server environment stabilization guard
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
 # ====================================================================
-# PRE-IMPORT ENVIRONMENT INJECTION (FIXES DAY4.PY WITHOUT TOUCHING IT)
+# MEMORY-OPTIMIZED RESOURCE CACHING INITIALIZATION
 # ====================================================================
-HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
-XML_FILE = "haarcascade_frontalface_default.xml"
+@st.cache_resource
+def bootstrap_environment():
+    """Runs exactly once on startup to protect server RAM from crashing."""
+    HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+    XML_FILE = "haarcascade_frontalface_default.xml"
 
-# Force fetch XML to runtime path if missing
-if not os.path.exists(XML_FILE):
-    try:
-        urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
-    except Exception:
-        pass
+    if not os.path.exists(XML_FILE):
+        try:
+            urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
+        except Exception:
+            pass
 
-# Inject dummy structures onto cv2 object map to satisfy the broken cv2.data access inside day4.py
-if not hasattr(cv2, 'data'):
-    class DummyData:
-        haarcascades = ""
-    cv2.data = DummyData()
-elif not hasattr(cv2.data, 'haarcascades'):
-    cv2.data.haarcascades = ""
+    # Patch the cv2 object environment once global-wide
+    if not hasattr(cv2, 'data'):
+        class DummyData:
+            haarcascades = ""
+        cv2.data = DummyData()
+    elif not hasattr(cv2.data, 'haarcascades'):
+        cv2.data.haarcascades = ""
 
-# Redirect the string access lookups locally
-cv2.data.haarcascades = "./" if os.path.exists(XML_FILE) else ""
+    cv2.data.haarcascades = "./" if os.path.exists(XML_FILE) else ""
+    return True
 
-# Import your native day logic files cleanly now that environment is patched
+# Trigger the singleton resource allocation
+bootstrap_environment()
+
+# Import your native day logic files cleanly now that environment is securely patched
 try:
     from day1 import Day1LevitationEngine
     from day4 import process_frame as day4_process
