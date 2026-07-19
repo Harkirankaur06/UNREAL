@@ -12,11 +12,11 @@ import urllib.request
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 # ====================================================================
-# MEMORY-OPTIMIZED RESOURCE CACHING INITIALIZATION
+# MEMORY-SAFE RESOURCE CACHING INITIALIZATION
 # ====================================================================
 @st.cache_resource
 def bootstrap_environment():
-    """Runs exactly once on startup to protect server RAM from crashing."""
+    """Runs exactly once on startup to protect server RAM and patch environment."""
     HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
     XML_FILE = "haarcascade_frontalface_default.xml"
 
@@ -26,7 +26,7 @@ def bootstrap_environment():
         except Exception:
             pass
 
-    # Patch the cv2 object environment once global-wide
+    # Patch the cv2 object environment once globally to prevent Day 4 dependency crashes
     if not hasattr(cv2, 'data'):
         class DummyData:
             haarcascades = ""
@@ -37,18 +37,22 @@ def bootstrap_environment():
     cv2.data.haarcascades = "./" if os.path.exists(XML_FILE) else ""
     return True
 
-# Trigger the singleton resource allocation
+# Trigger the single-run setup allocation
 bootstrap_environment()
 
-# Import your native day logic files cleanly now that environment is securely patched
+# Dynamic runtime import mapping to access your separate day files cleanly
 try:
     from day1 import Day1LevitationEngine
+except ImportError:
+    Day1LevitationEngine = None
+
+try:
     from day4 import process_frame as day4_process
 except ImportError:
-    pass
+    day4_process = None
 
 # ====================================================================
-# HIGH-END OBSIDIAN GLASSMORPHIC VIEWPORT
+# UNREAL ULTRA-CLEAN VIEWPORT STYLING
 # ====================================================================
 st.set_page_config(
     page_title="UNREAL ENGINE",
@@ -97,20 +101,21 @@ st.markdown('<h1 class="unreal-title">⚡ UNREAL</h1>', unsafe_allow_html=True)
 st.markdown('<p class="unreal-sub">// CORE PIPELINE INGRESS REGISTER</p>', unsafe_allow_html=True)
 
 # ====================================================================
-# ENGINE OBJECTS PERSISTENCE
+# PERSISTENT CLASS OBJECT ENGINE INSTANTIATION
 # ====================================================================
-if "day1_engine" not in st.session_state:
+if "day1_engine" not in st.session_state and Day1LevitationEngine is not None:
     try:
         st.session_state.day1_engine = Day1LevitationEngine()
-    except NameError:
+    except Exception:
         st.session_state.day1_engine = None
 
 # ====================================================================
-# VIEWPORT DISPLAY LAYER
+# CENTRAL VIEWPORT LAYER
 # ====================================================================
 _, center_viewport, _ = st.columns([1, 4, 1])
 
 with center_viewport:
+    # A clear, clean layer selector that routes inputs without dropping connections
     selected_layer = st.selectbox(
         label="[ CHOOSE CORE MATRIX TARGET ]",
         options=[
@@ -127,14 +132,20 @@ with center_viewport:
     
     matrix_id = selected_layer.split(":")[0].strip().lower().replace(" ", "")
 
+    # Main non-blocking processing callback engine thread
     def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
         
         try:
-            if matrix_id == "day1" and st.session_state.day1_engine is not None:
+            # Day 1 Route: Safely feeds image matrix into your class structure
+            if matrix_id == "day1" and st.session_state.get("day1_engine") is not None:
                 img = st.session_state.day1_engine.process_frame(img)
-            elif matrix_id == "day4":
+                
+            # Day 4 Route: Feeds image matrix straight to your day4 function
+            elif matrix_id == "day4" and day4_process is not None:
                 img = day4_process(img)
+                
+            # Standard Mirror Visual Fallback for unlinked slots
             else:
                 img = cv2.flip(img, 1)
                 cv2.putText(img, f"{selected_layer.upper()} ACTIVE", (30, 50), 
@@ -147,6 +158,7 @@ with center_viewport:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
+    # WebRTC canvas pipeline utilizing browser-stable connection handshakes
     webrtc_streamer(
         key="unreal-core-streamer",
         video_frame_callback=process_video_frame,
