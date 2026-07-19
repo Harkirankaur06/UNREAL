@@ -5,6 +5,7 @@ import math
 import random
 import numpy as np
 import cv2
+import urllib.request
 
 # Headless server environment stabilization guard
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -19,23 +20,24 @@ try:
 except ImportError:
     mp = None
 
-# Load OpenCV face tracker safely for Day 4
-# Secure remote fallback path for server deployments
+# ====================================================================
+# 1. FAIL-SAFE CASCADE INITIALIZATION (PREVENTS CLOUD CRASHES)
+# ====================================================================
 HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
 XML_FILE = "haarcascade_frontalface_default.xml"
 
-# Safely resolve or fetch the cascade file
-if not os.path.exists(XML_FILE):
-    import urllib.request
-    try:
+face_cascade = None
+try:
+    if not os.path.exists(XML_FILE):
         urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
-    except Exception:
-        pass # Handle potential cloud network glitches gracefully
-
-face_cascade = cv2.CascadeClassifier(XML_FILE)
+    
+    if os.path.exists(XML_FILE) and os.path.getsize(XML_FILE) > 0:
+        face_cascade = cv2.CascadeClassifier(XML_FILE)
+except Exception as e:
+    face_cascade = None
 
 # ====================================================================
-# 1. SNAPCHAT-INSPIRED ULTRA-PREMIUM GRADIENT UI
+# 2. SNAPCHAT-INSPIRED ULTRA-PREMIUM GRADIENT UI
 # ====================================================================
 st.set_page_config(
     page_title="Harkiran's Vision Lens Studio",
@@ -82,7 +84,6 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(255, 252, 0, 0.3);
         margin-bottom: 25px;
     }
-    /* Quick Lens Selector Buttons styling */
     .stButton>button {
         background-color: #18181b;
         color: #ffffff;
@@ -103,7 +104,7 @@ st.markdown('<h1 class="snap-title">👻 LENS STUDIO PORTAL</h1>', unsafe_allow_
 st.markdown('<p class="snap-subtitle">Next-Gen Real-Time Computer Vision & Web-AR Experience Engine</p>', unsafe_allow_html=True)
 
 # ====================================================================
-# 2. PERSISTENT STATE MANAGEMENT SYSTEM
+# 3. PERSISTENT STATE MANAGEMENT SYSTEM
 # ====================================================================
 if "active_lens" not in st.session_state:
     st.session_state.active_lens = "day1"
@@ -113,8 +114,6 @@ if "d4_bg" not in st.session_state:
     st.session_state.d4_bg = None
 if "d4_baseline_time" not in st.session_state:
     st.session_state.d4_baseline_time = None
-if "neutral_variance" not in st.session_state:
-    st.session_state.neutral_variance = None
 if "day6_trail" not in st.session_state:
     st.session_state.day6_trail = []
 if "day8_shuffle" not in st.session_state:
@@ -122,7 +121,7 @@ if "day8_shuffle" not in st.session_state:
     random.shuffle(st.session_state.day8_shuffle)
 
 # ====================================================================
-# 3. SNAPCHAT HORIZONTAL LENS SELECTOR CAROUSEL
+# 4. SNAPCHAT HORIZONTAL LENS SELECTOR CAROUSEL
 # ====================================================================
 st.markdown("### 🎛️ Select Active Snapchat Lens Filter")
 lens_cols = st.columns(8)
@@ -140,17 +139,15 @@ CORE_LENSES = [
 
 for idx, lens in enumerate(CORE_LENSES):
     with lens_cols[idx]:
-        # Highlighting active selection
         is_current = st.session_state.active_lens == lens["id"]
         btn_label = f"{lens['icon']} {lens['name']}" if not is_current else f"🌟 {lens['name'].upper()}"
         if st.button(btn_label, key=f"btn_{lens['id']}", use_container_width=True):
             st.session_state.active_lens = lens["id"]
 
-# Current Active Status Pill
 st.markdown(f'<div class="lens-pill">Active Filter Layer: Matrix Engine mode [{st.session_state.active_lens.upper()}] Engaged</div>', unsafe_allow_html=True)
 
 # ====================================================================
-# 4. SIDEBAR CONTROL PANEL & PORTFOLIO INTEGRATION
+# 5. SIDEBAR CONTROL PANEL & PORTFOLIO INTEGRATION
 # ====================================================================
 st.sidebar.markdown("### ⚡ Live Adjustments")
 
@@ -167,7 +164,6 @@ elif st.session_state.active_lens == "day4":
     if st.sidebar.button("🦖 Re-Calibrate Face Baseline", use_container_width=True):
         st.session_state.d4_bg = None
         st.session_state.d4_baseline_time = None
-        st.session_state.neutral_variance = None
 
 else:
     st.sidebar.info("⚡ Smart Auto-Lenses: No manual background adjustments needed. Frame adjusts on the fly.")
@@ -179,19 +175,16 @@ st.sidebar.markdown("**Focus:** Computer Vision, Web-AR Engine Optimization, Rea
 st.sidebar.link_button("🔗 Follow Updates on LinkedIn", "https://www.linkedin.com/in/harkiran-kaur-/", use_container_width=True)
 
 # ====================================================================
-# 5. HIGH-PERFORMANCE THREAD-SAFE CV AR ENGINES
+# 6. HIGH-PERFORMANCE THREAD-SAFE CV AR ENGINES
 # ====================================================================
 def render_day1_leviosa(img):
-    # Fallback simulation if direct memory matrix capturing hooks drop thread synchronization
     h, w, _ = img.shape
     if st.session_state.d1_bg is None or st.session_state.d1_bg == "CAPTURE_NEXT":
         st.session_state.d1_bg = img.copy()
     
-    # Render sleek, seamless structural levitation simulation
     out = img.copy()
     shift = int(25 * math.sin(time.time() * 4))
     
-    # Extract structural center object profile segment
     center_y, center_x = h // 2, w // 2
     cv2.circle(out, (center_x, center_y + shift), 70, (0, 252, 255), -1)
     cv2.circle(out, (center_x, center_y + shift), 62, (255, 255, 255), -1)
@@ -204,14 +197,12 @@ def render_day2_breach(img):
     edges = cv2.adaptiveThreshold(cv2.medianBlur(gray, 5), 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9)
     sketch = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
     
-    # Blend real camera data into the vector timeline breach sketch mask
     center_mask = np.zeros((h, w), dtype=np.uint8)
     cv2.circle(center_mask, (w // 2, h // 2), 160, 255, -1)
     
     output = sketch.copy()
     output[center_mask > 0] = img[center_mask > 0]
     
-    # Cybernetic UI layout lines around mask ring
     cv2.circle(output, (w // 2, h // 2), 160, (255, 252, 0), 3)
     cv2.putText(output, "TIMELINE BREACH STABLE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 252, 0), 2)
     return output
@@ -220,7 +211,6 @@ def render_day3_jedi(img):
     h, w, _ = img.shape
     output = img.copy()
     
-    # Precise multi-layered procedural light-saber matrix rendering 
     cv2.line(output, (w // 2, h - 30), (w // 2, h - 280), (255, 0, 120), 22, cv2.LINE_AA)
     cv2.line(output, (w // 2, h - 30), (w // 2, h - 280), (255, 255, 255), 6, cv2.LINE_AA)
     
@@ -243,20 +233,23 @@ def render_day4_gamma(img):
         return output
         
     gray_frame = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
     
-    # Base background isolation layer 
     diff = cv2.absdiff(st.session_state.d4_bg, gray_frame)
     _, body_mask = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
     
-    is_triggered = len(faces) > 0 # Auto-triggers Gamma shift when face bounding is visible
-    
+    is_triggered = False
+    if face_cascade is not None and not face_cascade.empty():
+        faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
+        is_triggered = len(faces) > 0
+    else:
+        motion_pixel_count = np.sum(body_mask == 255)
+        is_triggered = motion_pixel_count > (h * w * 0.05)
+
     if is_triggered:
         tint_layer = np.zeros_like(img)
-        tint_layer[:] = [25, 80, 35] # Deep Olive Green Matrix Matrix
+        tint_layer[:] = [25, 80, 35]
         green_blend = cv2.addWeighted(img, 0.45, tint_layer, 0.55, 0)
         
-        # Overlay isolated dynamic mutation components seamlessly 
         mask_3d = cv2.cvtColor(body_mask, cv2.COLOR_GRAY2BGR)
         output = np.where(mask_3d > 0, green_blend, img)
         cv2.putText(output, "HULK STATE: ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
@@ -269,7 +262,6 @@ def render_day5_edith(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     thermal = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
     
-    # Ultra modern technical engineering lines layout
     h, w, _ = thermal.shape
     cv2.rectangle(thermal, (40, 40), (w - 40, h - 40), (255, 255, 255), 1, cv2.LINE_AA)
     cv2.line(thermal, (w // 2 - 20, h // 2), (w // 2 + 20, h // 2), (255, 255, 255), 2)
@@ -283,7 +275,6 @@ def render_day6_pixie(img):
     output = img.copy()
     t = time.time()
     
-    # Continuous vector calculations loop for dynamic wizard particles
     cx = int(w // 2 + 160 * math.sin(t * 3.5))
     cy = int(h // 2 + 90 * math.cos(t * 2.2))
     
@@ -302,7 +293,6 @@ def render_day7_sparkle(img):
     h, w, _ = img.shape
     output = img.copy()
     
-    # Diamond diamond skin sparkles rendering layer
     rand_noise = (np.random.rand(h, w) > 0.985) * 255
     output[rand_noise > 0] = [255, 255, 255]
     
@@ -314,7 +304,6 @@ def render_day8_shatter(img):
     th, tw = h // 3, w // 3
     output = np.zeros_like(img)
     
-    # Map the camera stream frame sections safely using shuffler indices map
     for idx, pos in enumerate(st.session_state.day8_shuffle):
         src_r, src_c = idx // 3, idx % 3
         dst_r, dst_c = pos // 3, pos % 3
@@ -325,11 +314,11 @@ def render_day8_shatter(img):
     return output
 
 # ====================================================================
-# 6. ASYNCHRONOUS PIPELINE CALLBACK INGRESS ROUTER
+# 7. ASYNCHRONOUS PIPELINE CALLBACK INGRESS ROUTER
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
-    img = cv2.flip(img, 1) # Mirror mode active for immediate intuition
+    img = cv2.flip(img, 1)
     
     active_lens = st.session_state.active_lens
     
@@ -349,7 +338,7 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
-# 7. VIEWPORT CANVAS MOUNT LAYER & METRICS
+# 8. VIEWPORT CANVAS MOUNT LAYER & METRICS
 # ====================================================================
 col_video, col_metrics = st.columns([2, 1])
 
