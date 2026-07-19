@@ -6,8 +6,33 @@ import cv2
 import streamlit as st
 from streamlit_webrtc import webrtc_streamer, RTCConfiguration
 import av
+import urllib.request
 
-# Import your native day logic files cleanly
+# ====================================================================
+# PRE-IMPORT ENVIRONMENT INJECTION (FIXES DAY4.PY WITHOUT TOUCHING IT)
+# ====================================================================
+HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+XML_FILE = "haarcascade_frontalface_default.xml"
+
+# Force fetch XML to runtime path if missing
+if not os.path.exists(XML_FILE):
+    try:
+        urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
+    except Exception:
+        pass
+
+# Inject dummy structures onto cv2 object map to satisfy the broken cv2.data access inside day4.py
+if not hasattr(cv2, 'data'):
+    class DummyData:
+        haarcascades = ""
+    cv2.data = DummyData()
+elif not hasattr(cv2.data, 'haarcascades'):
+    cv2.data.haarcascades = ""
+
+# Redirect the string access lookups locally
+cv2.data.haarcascades = "./" if os.path.exists(XML_FILE) else ""
+
+# Import your native day logic files cleanly now that environment is patched
 try:
     from day1 import Day1LevitationEngine
     from day4 import process_frame as day4_process
@@ -78,7 +103,6 @@ if "day1_engine" not in st.session_state:
 _, center_viewport, _ = st.columns([1, 4, 1])
 
 with center_viewport:
-    # Safe non-blocking layer select to prevent camera unmounting drops
     selected_layer = st.selectbox(
         label="[ CHOOSE CORE MATRIX TARGET ]",
         options=[
@@ -93,10 +117,8 @@ with center_viewport:
         ]
     )
     
-    # Extract string id tags
     matrix_id = selected_layer.split(":")[0].strip().lower().replace(" ", "")
 
-    # Asynchronous pipeline frame routing engine callback
     def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
         img = frame.to_ndarray(format="bgr24")
         
@@ -104,10 +126,8 @@ with center_viewport:
             if matrix_id == "day1" and st.session_state.day1_engine is not None:
                 img = st.session_state.day1_engine.process_frame(img)
             elif matrix_id == "day4":
-                # Calls your exact functional process_frame method inside day4.py
                 img = day4_process(img)
             else:
-                # Mirroring path standard fallback for days not loaded or placeholder blocks
                 img = cv2.flip(img, 1)
                 cv2.putText(img, f"{selected_layer.upper()} ACTIVE", (30, 50), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 204), 2, cv2.LINE_AA)
@@ -119,7 +139,6 @@ with center_viewport:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Hardware-adaptive aspect ratio setup prevents browser peer connection dropouts
     webrtc_streamer(
         key="unreal-core-streamer",
         video_frame_callback=process_video_frame,
