@@ -20,7 +20,19 @@ except ImportError:
     mp = None
 
 # Load OpenCV face tracker safely for Day 4
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+# Secure remote fallback path for server deployments
+HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
+XML_FILE = "haarcascade_frontalface_default.xml"
+
+# Safely resolve or fetch the cascade file
+if not os.path.exists(XML_FILE):
+    import urllib.request
+    try:
+        urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
+    except Exception:
+        pass # Handle potential cloud network glitches gracefully
+
+face_cascade = cv2.CascadeClassifier(XML_FILE)
 
 # ====================================================================
 # 1. SNAPCHAT-INSPIRED ULTRA-PREMIUM GRADIENT UI
