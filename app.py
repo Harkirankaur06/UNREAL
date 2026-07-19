@@ -90,30 +90,6 @@ if "day8_grid" not in st.session_state:
     random.shuffle(st.session_state.day8_grid)
 
 # ====================================================================
-# HIGH-WOW COMPACT CONTROL PLATE
-# ====================================================================
-matrix_cols = st.columns(8)
-LAYERS = [
-    {"id": "day1", "icon": "🛸", "label": "Leviosa"},
-    {"id": "day2", "icon": "🌀", "label": "Breach"},
-    {"id": "day3", "icon": "⚔️", "label": "Jedi"},
-    {"id": "day4", "icon": "🦖", "label": "Gamma"},
-    {"id": "day5", "icon": "🕶️", "label": "E.D.I.T.H"},
-    {"id": "day6", "icon": "✨", "label": "Pixie"},
-    {"id": "day7", "icon": "💎", "label": "Sparkle"},
-    {"id": "day8", "icon": "🧩", "label": "Shatter"}
-]
-
-for idx, lay in enumerate(LAYERS):
-    with matrix_cols[idx]:
-        is_active = st.session_state.active_matrix == lay["id"]
-        display_text = f"{lay['icon']} {lay['label'].upper()}" if not is_active else f"🌌 {lay['label'].upper()}"
-        if st.button(display_text, key=f"btn_{lay['id']}", use_container_width=True):
-            st.session_state.active_matrix = lay["id"]
-
-st.markdown("<br>", unsafe_allow_html=True)
-
-# ====================================================================
 # REAL-TIME DYNAMIC AR COMPUTE MATRIX FILTERS
 # ====================================================================
 def filter_day1(img):
@@ -122,7 +98,6 @@ def filter_day1(img):
     offset = int(35 * math.sin(time.time() * 5))
     cy, cx = h // 2, w // 2
     
-    # Clean programmatic holographic vector object displacement simulation
     cv2.circle(out, (cx, cy + offset), 75, (255, 0, 127), -1)
     cv2.circle(out, (cx, cy + offset), 65, (255, 255, 255), -1)
     cv2.putText(out, "LEVITATION ENGINE ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 127), 2, cv2.LINE_AA)
@@ -147,7 +122,6 @@ def filter_day2(img):
 def filter_day3(img):
     h, w, _ = img.shape
     out = img.copy()
-    # Continuous high-impact dual glowing laser core architecture
     cv2.line(out, (w // 2, h - 20), (w // 2, h - 300), (0, 102, 255), 24, cv2.LINE_AA)
     cv2.line(out, (w // 2, h - 20), (w // 2, h - 300), (255, 255, 255), 8, cv2.LINE_AA)
     cv2.putText(out, "LIGHTSABER CORE LINKED", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 102, 255), 2, cv2.LINE_AA)
@@ -155,14 +129,10 @@ def filter_day3(img):
 
 def filter_day4(img):
     h, w, _ = img.shape
-    out = img.copy()
-    
-    # Self-contained spatial background mutation engine
     tint = np.zeros_like(img)
     tint[:] = [15, 75, 25] 
     mutated_blend = cv2.addWeighted(img, 0.4, tint, 0.6, 0)
     
-    # Structural spatial center mask loop detection
     mask = np.zeros((h, w), dtype=np.uint8)
     cv2.rectangle(mask, (w // 4, h // 5), (3 * w // 4, 4 * h // 5), 255, -1)
     
@@ -175,7 +145,6 @@ def filter_day5(img):
     hud = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
     h, w, _ = hud.shape
     
-    # Cybernetic UI overlay layout
     cv2.rectangle(hud, (30, 30), (w - 30, h - 30), (0, 255, 255), 1, cv2.LINE_AA)
     cv2.line(hud, (w // 2 - 30, h // 2), (w // 2 + 30, h // 2), (0, 255, 255), 1)
     cv2.line(hud, (w // 2, h // 2 - 30), (w // 2, h // 2 + 30), (0, 255, 255), 1)
@@ -188,7 +157,6 @@ def filter_day6(img):
     out = img.copy()
     t = time.time()
     
-    # Math orbital path generators for wizard particles
     nx = int(w // 2 + 180 * math.sin(t * 4.0))
     ny = int(h // 2 + 100 * math.cos(t * 2.5))
     
@@ -207,7 +175,6 @@ def filter_day7(img):
     h, w, _ = img.shape
     out = img.copy()
     
-    # High frequency diamond noise sparkle generation maps
     sparkle_map = (np.random.rand(h, w) > 0.988) * 255
     out[sparkle_map > 0] = [255, 255, 255]
     
@@ -233,8 +200,9 @@ def filter_day8(img):
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
-    img = cv2.flip(img, 1) # Auto-mirror active for intuitive physical interaction
+    img = cv2.flip(img, 1)
     
+    # Thread-safe local proxy lookup to avoid accessing session_state items mid-render
     current_layer = st.session_state.active_matrix
     
     try:
@@ -247,31 +215,52 @@ def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
         elif current_layer == "day7": img = filter_day7(img)
         elif current_layer == "day8": img = filter_day8(img)
     except Exception:
-        pass # Zero disruption interface safety catch
+        pass
         
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
 # UNREAL CENTRAL HUB VIEWPORT MOUNT
 # ====================================================================
-_, center_col, _ = st.columns([1, 4, 1])
+_, center_col, _ = st.columns([1, 5, 1])
 
 with center_col:
+    # 1. CAMERA CANVAS MOUNTED AT THE TOP
     webrtc_streamer(
         key="unreal-core-streamer",
         video_frame_callback=process_video_frame,
         sendback_audio=False,
         media_stream_constraints={
-            "video": {
-                "width": {"ideal": 1020},
-                "height": {"ideal": 680},
-                "facingMode": "user",
-                "frameRate": {"ideal": 30}
-            },
+            "video": True,  # Hardware-adaptive aspect ratio setup prevents browser channel blocks
             "audio": False
         },
         rtc_configuration=RTCConfiguration(
-            {"iceServers": [{"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}]}
+            {"iceServers": [
+                {"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]},
+                {"urls": ["stun:stun2.l.google.com:19302", "stun:stun3.l.google.com:19302"]}
+            ]}
         ),
         async_processing=True
     )
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # 2. CONTROL INTERACTION MATRIX PLATES POSITIONED DIRECTLY UNDERNEATH
+    matrix_cols = st.columns(8)
+    LAYERS = [
+        {"id": "day1", "icon": "🛸", "label": "Leviosa"},
+        {"id": "day2", "icon": "🌀", "label": "Breach"},
+        {"id": "day3", "icon": "⚔️", "label": "Jedi"},
+        {"id": "day4", "icon": "🦖", "label": "Gamma"},
+        {"id": "day5", "icon": "🕶️", "label": "E.D.I.T.H"},
+        {"id": "day6", "icon": "✨", "label": "Pixie"},
+        {"id": "day7", "icon": "💎", "label": "Sparkle"},
+        {"id": "day8", "icon": "🧩", "label": "Shatter"}
+    ]
+
+    for idx, lay in enumerate(LAYERS):
+        with matrix_cols[idx]:
+            is_active = st.session_state.active_matrix == lay["id"]
+            display_text = f"{lay['icon']} {lay['label'].upper()}" if not is_active else f"🌌 {lay['label'].upper()}"
+            if st.button(display_text, key=f"btn_{lay['id']}", use_container_width=True):
+                st.session_state.active_matrix = lay["id"]
