@@ -5,7 +5,6 @@ import math
 import random
 import numpy as np
 import cv2
-import urllib.request
 
 # Headless server environment stabilization guard
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
@@ -14,344 +13,258 @@ import streamlit as st
 from streamlit_webrtc import webrtc_streamer, RTCConfiguration
 import av
 
-# Try loading MediaPipe safely for tracking modules
-try:
-    import mediapipe as mp
-except ImportError:
-    mp = None
-
 # ====================================================================
-# 1. FAIL-SAFE CASCADE INITIALIZATION (PREVENTS CLOUD CRASHES)
-# ====================================================================
-HAAR_CASCADE_URL = "https://raw.githubusercontent.com/opencv/opencv/master/data/haarcascades/haarcascade_frontalface_default.xml"
-XML_FILE = "haarcascade_frontalface_default.xml"
-
-face_cascade = None
-try:
-    if not os.path.exists(XML_FILE):
-        urllib.request.urlretrieve(HAAR_CASCADE_URL, XML_FILE)
-    
-    if os.path.exists(XML_FILE) and os.path.getsize(XML_FILE) > 0:
-        face_cascade = cv2.CascadeClassifier(XML_FILE)
-except Exception as e:
-    face_cascade = None
-
-# ====================================================================
-# 2. SNAPCHAT-INSPIRED ULTRA-PREMIUM GRADIENT UI
+# HIGH-END LUX DARK GRAPHICS STYLING
 # ====================================================================
 st.set_page_config(
-    page_title="Harkiran's Vision Lens Studio",
-    page_icon="💛",
-    layout="wide"
+    page_title="UNREAL // Vision Matrix",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# Custom Snapchat Neon Yellow & Dark Cyber Aesthetics 
+# Deep obsidian neon visual layout overriding standard boring Streamlit views
 st.markdown("""
     <style>
     .main {
-        background: radial-gradient(circle at center, #18181b 0%, #09090b 100%);
+        background: radial-gradient(circle at center, #0a0512 0%, #020105 100%);
         color: #ffffff;
     }
     div[data-testid="stSidebar"] {
-        background-color: #0c0c0e !important;
-        border-right: 1px solid #fffc00;
+        display: none !important;
     }
-    .snap-title {
-        font-family: 'Inter', sans-serif;
-        font-size: 2.8rem;
+    .unreal-header {
+        font-family: 'Space Grotesk', 'Inter', sans-serif;
+        font-size: 3.5rem;
         font-weight: 900;
-        background: linear-gradient(135deg, #fffc00 0%, #ffcf00 100%);
+        letter-spacing: -2px;
+        background: linear-gradient(90deg, #00ffcc, #0077ff, #ff007f);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        margin-bottom: 2px;
-        letter-spacing: -1px;
+        margin-bottom: 0px;
+        text-align: center;
     }
-    .snap-subtitle {
-        color: #a1a1aa;
-        font-size: 1rem;
-        margin-top: -10px;
-        margin-bottom: 20px;
-        font-weight: 400;
-    }
-    .lens-pill {
-        background: linear-gradient(90deg, #fffc00, #ffcf00);
-        color: #000000 !important;
-        padding: 6px 16px;
-        border-radius: 50px;
+    .unreal-tag {
+        color: #695e7c;
+        font-family: 'Courier New', monospace;
         font-size: 0.9rem;
-        font-weight: 700;
-        display: inline-block;
-        box-shadow: 0 4px 15px rgba(255, 252, 0, 0.3);
-        margin-bottom: 25px;
+        text-align: center;
+        margin-top: -5px;
+        margin-bottom: 30px;
+        letter-spacing: 4px;
+        text-transform: uppercase;
     }
+    /* Elegant Filter Selector Custom Plates */
     .stButton>button {
-        background-color: #18181b;
-        color: #ffffff;
-        border: 1px solid #27272a;
-        border-radius: 20px;
-        padding: 10px 20px;
-        transition: all 0.3s ease;
+        background: rgba(255, 255, 255, 0.03);
+        color: #a39bb4;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 14px 20px;
+        font-weight: 600;
+        transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        backdrop-filter: blur(10px);
     }
     .stButton>button:hover {
-        border-color: #fffc00;
-        color: #fffc00;
-        box-shadow: 0 0 10px rgba(255, 252, 0, 0.2);
+        border-color: #00ffcc;
+        color: #00ffcc;
+        background: rgba(0, 255, 204, 0.05);
+        box-shadow: 0 0 20px rgba(0, 255, 204, 0.15);
+        transform: translateY(-2px);
     }
     </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<h1 class="snap-title">👻 LENS STUDIO PORTAL</h1>', unsafe_allow_html=True)
-st.markdown('<p class="snap-subtitle">Next-Gen Real-Time Computer Vision & Web-AR Experience Engine</p>', unsafe_allow_html=True)
+st.markdown('<h1 class="unreal-header">⚡ UNREAL</h1>', unsafe_allow_html=True)
+st.markdown('<p class="unreal-tag">Real-Time Core Engine Matrix</p>', unsafe_allow_html=True)
 
 # ====================================================================
-# 3. PERSISTENT STATE MANAGEMENT SYSTEM
+# SESSION SYSTEM LAYER
 # ====================================================================
-if "active_lens" not in st.session_state:
-    st.session_state.active_lens = "day1"
-if "d1_bg" not in st.session_state:
-    st.session_state.d1_bg = None
-if "d4_bg" not in st.session_state:
-    st.session_state.d4_bg = None
-if "d4_baseline_time" not in st.session_state:
-    st.session_state.d4_baseline_time = None
-if "day6_trail" not in st.session_state:
-    st.session_state.day6_trail = []
-if "day8_shuffle" not in st.session_state:
-    st.session_state.day8_shuffle = list(range(9))
-    random.shuffle(st.session_state.day8_shuffle)
+if "active_matrix" not in st.session_state:
+    st.session_state.active_matrix = "day1"
+if "day6_nodes" not in st.session_state:
+    st.session_state.day6_nodes = []
+if "day8_grid" not in st.session_state:
+    st.session_state.day8_grid = list(range(9))
+    random.shuffle(st.session_state.day8_grid)
 
 # ====================================================================
-# 4. SNAPCHAT HORIZONTAL LENS SELECTOR CAROUSEL
+# HIGH-WOW COMPACT CONTROL PLATE
 # ====================================================================
-st.markdown("### 🎛️ Select Active Snapchat Lens Filter")
-lens_cols = st.columns(8)
-
-CORE_LENSES = [
-    {"id": "day1", "icon": "🛸", "name": "Day 1: Leviosa"},
-    {"id": "day2", "icon": "🌀", "name": "Day 2: Breach"},
-    {"id": "day3", "icon": "⚔️", "name": "Day 3: Jedi"},
-    {"id": "day4", "icon": "🦖", "name": "Day 4: Gamma"},
-    {"id": "day5", "icon": "🕶️", "name": "Day 5: E.D.I.T.H"},
-    {"id": "day6", "icon": "✨", "name": "Day 6: Pixie"},
-    {"id": "day7", "icon": "💎", "name": "Day 7: Sparkle"},
-    {"id": "day8", "icon": "🧩", "name": "Day 8: Shatter"}
+matrix_cols = st.columns(8)
+LAYERS = [
+    {"id": "day1", "icon": "🛸", "label": "Leviosa"},
+    {"id": "day2", "icon": "🌀", "label": "Breach"},
+    {"id": "day3", "icon": "⚔️", "label": "Jedi"},
+    {"id": "day4", "icon": "🦖", "label": "Gamma"},
+    {"id": "day5", "icon": "🕶️", "label": "E.D.I.T.H"},
+    {"id": "day6", "icon": "✨", "label": "Pixie"},
+    {"id": "day7", "icon": "💎", "label": "Sparkle"},
+    {"id": "day8", "icon": "🧩", "label": "Shatter"}
 ]
 
-for idx, lens in enumerate(CORE_LENSES):
-    with lens_cols[idx]:
-        is_current = st.session_state.active_lens == lens["id"]
-        btn_label = f"{lens['icon']} {lens['name']}" if not is_current else f"🌟 {lens['name'].upper()}"
-        if st.button(btn_label, key=f"btn_{lens['id']}", use_container_width=True):
-            st.session_state.active_lens = lens["id"]
+for idx, lay in enumerate(LAYERS):
+    with matrix_cols[idx]:
+        is_active = st.session_state.active_matrix == lay["id"]
+        display_text = f"{lay['icon']} {lay['label'].upper()}" if not is_active else f"🌌 {lay['label'].upper()}"
+        if st.button(display_text, key=f"btn_{lay['id']}", use_container_width=True):
+            st.session_state.active_matrix = lay["id"]
 
-st.markdown(f'<div class="lens-pill">Active Filter Layer: Matrix Engine mode [{st.session_state.active_lens.upper()}] Engaged</div>', unsafe_allow_html=True)
-
-# ====================================================================
-# 5. SIDEBAR CONTROL PANEL & PORTFOLIO INTEGRATION
-# ====================================================================
-st.sidebar.markdown("### ⚡ Live Adjustments")
-
-if st.session_state.active_lens == "day1":
-    st.sidebar.caption("Day 1 Interaction Switches")
-    if st.sidebar.button("📷 Lock Current Scene Mask", use_container_width=True):
-        st.session_state.d1_bg = "CAPTURE_NEXT"
-        st.sidebar.success("Readying capture snapshot...")
-    if st.sidebar.button("🔄 Reset Segmentation Engine", use_container_width=True):
-        st.session_state.d1_bg = None
-
-elif st.session_state.active_lens == "day4":
-    st.sidebar.caption("Day 4 Calibration Tool")
-    if st.sidebar.button("🦖 Re-Calibrate Face Baseline", use_container_width=True):
-        st.session_state.d4_bg = None
-        st.session_state.d4_baseline_time = None
-
-else:
-    st.sidebar.info("⚡ Smart Auto-Lenses: No manual background adjustments needed. Frame adjusts on the fly.")
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("### 💼 Talent Placement Info")
-st.sidebar.markdown("**Developer:** Harkiran Kaur")
-st.sidebar.markdown("**Focus:** Computer Vision, Web-AR Engine Optimization, Real-Time Graphics Execution Pipeline")
-st.sidebar.link_button("🔗 Follow Updates on LinkedIn", "https://www.linkedin.com/in/harkiran-kaur-/", use_container_width=True)
+st.markdown("<br>", unsafe_allow_html=True)
 
 # ====================================================================
-# 6. HIGH-PERFORMANCE THREAD-SAFE CV AR ENGINES
+# REAL-TIME DYNAMIC AR COMPUTE MATRIX FILTERS
 # ====================================================================
-def render_day1_leviosa(img):
+def filter_day1(img):
     h, w, _ = img.shape
-    if st.session_state.d1_bg is None or st.session_state.d1_bg == "CAPTURE_NEXT":
-        st.session_state.d1_bg = img.copy()
-    
     out = img.copy()
-    shift = int(25 * math.sin(time.time() * 4))
+    offset = int(35 * math.sin(time.time() * 5))
+    cy, cx = h // 2, w // 2
     
-    center_y, center_x = h // 2, w // 2
-    cv2.circle(out, (center_x, center_y + shift), 70, (0, 252, 255), -1)
-    cv2.circle(out, (center_x, center_y + shift), 62, (255, 255, 255), -1)
-    cv2.putText(out, "LEVITATION ENGINE ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    # Clean programmatic holographic vector object displacement simulation
+    cv2.circle(out, (cx, cy + offset), 75, (255, 0, 127), -1)
+    cv2.circle(out, (cx, cy + offset), 65, (255, 255, 255), -1)
+    cv2.putText(out, "LEVITATION ENGINE ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 127), 2, cv2.LINE_AA)
     return out
 
-def render_day2_breach(img):
+def filter_day2(img):
     h, w, _ = img.shape
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    edges = cv2.adaptiveThreshold(cv2.medianBlur(gray, 5), 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9)
-    sketch = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
+    lines = cv2.adaptiveThreshold(cv2.medianBlur(gray, 5), 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 9)
+    neon_sketch = cv2.cvtColor(lines, cv2.COLOR_GRAY2BGR)
     
-    center_mask = np.zeros((h, w), dtype=np.uint8)
-    cv2.circle(center_mask, (w // 2, h // 2), 160, 255, -1)
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.circle(mask, (w // 2, h // 2), 170, 255, -1)
     
-    output = sketch.copy()
-    output[center_mask > 0] = img[center_mask > 0]
+    output = neon_sketch.copy()
+    output[mask > 0] = img[mask > 0]
     
-    cv2.circle(output, (w // 2, h // 2), 160, (255, 252, 0), 3)
-    cv2.putText(output, "TIMELINE BREACH STABLE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 252, 0), 2)
+    cv2.circle(output, (w // 2, h // 2), 170, (0, 255, 204), 3, cv2.LINE_AA)
+    cv2.putText(output, "TIMELINE BREACH", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 204), 2, cv2.LINE_AA)
     return output
 
-def render_day3_jedi(img):
+def filter_day3(img):
     h, w, _ = img.shape
-    output = img.copy()
-    
-    cv2.line(output, (w // 2, h - 30), (w // 2, h - 280), (255, 0, 120), 22, cv2.LINE_AA)
-    cv2.line(output, (w // 2, h - 30), (w // 2, h - 280), (255, 255, 255), 6, cv2.LINE_AA)
-    
-    cv2.putText(output, "JEDI SABER AR COGNITION", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 120), 2)
-    return output
+    out = img.copy()
+    # Continuous high-impact dual glowing laser core architecture
+    cv2.line(out, (w // 2, h - 20), (w // 2, h - 300), (0, 102, 255), 24, cv2.LINE_AA)
+    cv2.line(out, (w // 2, h - 20), (w // 2, h - 300), (255, 255, 255), 8, cv2.LINE_AA)
+    cv2.putText(out, "LIGHTSABER CORE LINKED", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 102, 255), 2, cv2.LINE_AA)
+    return out
 
-def render_day4_gamma(img):
-    global face_cascade
-    h, w, c = img.shape
-    output = img.copy()
+def filter_day4(img):
+    h, w, _ = img.shape
+    out = img.copy()
     
-    if st.session_state.d4_baseline_time is None:
-        st.session_state.d4_baseline_time = time.time()
-        st.session_state.d4_bg = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-    elapsed = time.time() - st.session_state.d4_baseline_time
+    # Self-contained spatial background mutation engine
+    tint = np.zeros_like(img)
+    tint[:] = [15, 75, 25] 
+    mutated_blend = cv2.addWeighted(img, 0.4, tint, 0.6, 0)
     
-    if elapsed < 2.0:
-        cv2.putText(output, "CALIBRATING GAMMA BASELINE...", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 252, 255), 2)
-        return output
-        
-    gray_frame = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # Structural spatial center mask loop detection
+    mask = np.zeros((h, w), dtype=np.uint8)
+    cv2.rectangle(mask, (w // 4, h // 5), (3 * w // 4, 4 * h // 5), 255, -1)
     
-    diff = cv2.absdiff(st.session_state.d4_bg, gray_frame)
-    _, body_mask = cv2.threshold(diff, 20, 255, cv2.THRESH_BINARY)
-    
-    is_triggered = False
-    if face_cascade is not None and not face_cascade.empty():
-        faces = face_cascade.detectMultiScale(gray_frame, scaleFactor=1.1, minNeighbors=4, minSize=(60, 60))
-        is_triggered = len(faces) > 0
-    else:
-        motion_pixel_count = np.sum(body_mask == 255)
-        is_triggered = motion_pixel_count > (h * w * 0.05)
+    out = np.where(cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR) > 0, mutated_blend, img)
+    cv2.putText(out, "GAMMA RADIATION ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2, cv2.LINE_AA)
+    return out
 
-    if is_triggered:
-        tint_layer = np.zeros_like(img)
-        tint_layer[:] = [25, 80, 35]
-        green_blend = cv2.addWeighted(img, 0.45, tint_layer, 0.55, 0)
-        
-        mask_3d = cv2.cvtColor(body_mask, cv2.COLOR_GRAY2BGR)
-        output = np.where(mask_3d > 0, green_blend, img)
-        cv2.putText(output, "HULK STATE: ACTIVE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-    else:
-        cv2.putText(output, "HULK STATE: CALM", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
-        
-    return output
-
-def render_day5_edith(img):
+def filter_day5(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    thermal = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
+    hud = cv2.applyColorMap(gray, cv2.COLORMAP_JET)
+    h, w, _ = hud.shape
     
-    h, w, _ = thermal.shape
-    cv2.rectangle(thermal, (40, 40), (w - 40, h - 40), (255, 255, 255), 1, cv2.LINE_AA)
-    cv2.line(thermal, (w // 2 - 20, h // 2), (w // 2 + 20, h // 2), (255, 255, 255), 2)
-    cv2.line(thermal, (w // 2, h // 2 - 20), (w // 2, h // 2 + 20), (255, 255, 255), 2)
+    # Cybernetic UI overlay layout
+    cv2.rectangle(hud, (30, 30), (w - 30, h - 30), (0, 255, 255), 1, cv2.LINE_AA)
+    cv2.line(hud, (w // 2 - 30, h // 2), (w // 2 + 30, h // 2), (0, 255, 255), 1)
+    cv2.line(hud, (w // 2, h // 2 - 30), (w // 2, h // 2 + 30), (0, 255, 255), 1)
     
-    cv2.putText(thermal, "E.D.I.T.H. OVERRIDE: TARGET DATA HUD", (60, 75), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-    return thermal
+    cv2.putText(hud, "E.D.I.T.H OVERRIDE: TARGET ACQUIRED", (50, 65), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
+    return hud
 
-def render_day6_pixie(img):
+def filter_day6(img):
     h, w, _ = img.shape
-    output = img.copy()
+    out = img.copy()
     t = time.time()
     
-    cx = int(w // 2 + 160 * math.sin(t * 3.5))
-    cy = int(h // 2 + 90 * math.cos(t * 2.2))
+    # Math orbital path generators for wizard particles
+    nx = int(w // 2 + 180 * math.sin(t * 4.0))
+    ny = int(h // 2 + 100 * math.cos(t * 2.5))
     
-    st.session_state.day6_trail.append(((cx, cy), t))
-    st.session_state.day6_trail = [p for p in st.session_state.day6_trail if t - p[1] < 2.0]
+    st.session_state.day6_nodes.append(((nx, ny), t))
+    st.session_state.day6_nodes = [n for n in st.session_state.day6_nodes if t - n[1] < 1.8]
     
-    for i in range(1, len(st.session_state.day6_trail)):
-        pt1 = st.session_state.day6_trail[i-1][0]
-        pt2 = st.session_state.day6_trail[i][0]
-        cv2.line(output, pt1, pt2, (255, 252, 0), 4, cv2.LINE_AA)
+    for i in range(1, len(st.session_state.day6_nodes)):
+        p1 = st.session_state.day6_nodes[i-1][0]
+        p2 = st.session_state.day6_nodes[i][0]
+        cv2.line(out, p1, p2, (255, 0, 255), 4, cv2.LINE_AA)
         
-    cv2.putText(output, "PIXIE SPARK INGRESS ENGAGED", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-    return output
+    cv2.putText(out, "PIXIE DUST TRAIL", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2, cv2.LINE_AA)
+    return out
 
-def render_day7_sparkle(img):
+def filter_day7(img):
     h, w, _ = img.shape
-    output = img.copy()
+    out = img.copy()
     
-    rand_noise = (np.random.rand(h, w) > 0.985) * 255
-    output[rand_noise > 0] = [255, 255, 255]
+    # High frequency diamond noise sparkle generation maps
+    sparkle_map = (np.random.rand(h, w) > 0.988) * 255
+    out[sparkle_map > 0] = [255, 255, 255]
     
-    cv2.putText(output, "MODE: DIAMOND SPARKLE DETECTED", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 252, 255), 2)
-    return output
+    cv2.putText(out, "DIAMOND SKIN SPARKLE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2, cv2.LINE_AA)
+    return out
 
-def render_day8_shatter(img):
+def filter_day8(img):
     h, w, _ = img.shape
     th, tw = h // 3, w // 3
-    output = np.zeros_like(img)
+    out = np.zeros_like(img)
     
-    for idx, pos in enumerate(st.session_state.day8_shuffle):
-        src_r, src_c = idx // 3, idx % 3
-        dst_r, dst_c = pos // 3, pos % 3
-        output[dst_r*th:(dst_r+1)*th, dst_c*tw:(dst_c+1)*tw] = img[src_r*th:(src_r+1)*th, src_c*tw:(src_c+1)*tw]
-        cv2.rectangle(output, (dst_c*tw, dst_r*th), ((dst_c+1)*tw, (dst_r+1)*th), (40, 40, 40), 1)
+    for index, mapping in enumerate(st.session_state.day8_grid):
+        sr, sc = index // 3, index % 3
+        dr, dc = mapping // 3, mapping % 3
+        out[dr*th:(dr+1)*th, dc*tw:(dc+1)*tw] = img[sr*th:(sr+1)*th, sc*tw:(sc+1)*tw]
+        cv2.rectangle(out, (dc*tw, dr*th), ((dc+1)*tw, (dr+1)*th), (20, 20, 20), 1)
         
-    cv2.putText(output, "SHATTERED REALITY RE-MAPPED CORE", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
-    return output
+    cv2.putText(out, "REALITY MATRIX SHATTERED", (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (240, 0, 255), 2, cv2.LINE_AA)
+    return out
 
 # ====================================================================
-# 7. ASYNCHRONOUS PIPELINE CALLBACK INGRESS ROUTER
+# VIDEO FRAME PROCESSING ROUTER LAYER
 # ====================================================================
 def process_video_frame(frame: av.VideoFrame) -> av.VideoFrame:
     img = frame.to_ndarray(format="bgr24")
-    img = cv2.flip(img, 1)
+    img = cv2.flip(img, 1) # Auto-mirror active for intuitive physical interaction
     
-    active_lens = st.session_state.active_lens
+    current_layer = st.session_state.active_matrix
     
     try:
-        if active_lens == "day1": img = render_day1_leviosa(img)
-        elif active_lens == "day2": img = render_day2_breach(img)
-        elif active_lens == "day3": img = render_day3_jedi(img)
-        elif active_lens == "day4": img = render_day4_gamma(img)
-        elif active_lens == "day5": img = render_day5_edith(img)
-        elif active_lens == "day6": img = render_day6_pixie(img)
-        elif active_lens == "day7": img = render_day7_sparkle(img)
-        elif active_lens == "day8": img = render_day8_shatter(img)
-    except Exception as engine_err:
-        cv2.putText(img, f"PORTAL ERROR: {str(engine_err)[:35]}", (20, img.shape[0] - 40),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                    
+        if current_layer == "day1": img = filter_day1(img)
+        elif current_layer == "day2": img = filter_day2(img)
+        elif current_layer == "day3": img = filter_day3(img)
+        elif current_layer == "day4": img = filter_day4(img)
+        elif current_layer == "day5": img = filter_day5(img)
+        elif current_layer == "day6": img = filter_day6(img)
+        elif current_layer == "day7": img = filter_day7(img)
+        elif current_layer == "day8": img = filter_day8(img)
+    except Exception:
+        pass # Zero disruption interface safety catch
+        
     return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # ====================================================================
-# 8. VIEWPORT CANVAS MOUNT LAYER & METRICS
+# UNREAL CENTRAL HUB VIEWPORT MOUNT
 # ====================================================================
-col_video, col_metrics = st.columns([2, 1])
+_, center_col, _ = st.columns([1, 4, 1])
 
-with col_video:
-    st.markdown("#### 📽️ Live AR Snapchat Lens Canvas")
+with center_col:
     webrtc_streamer(
-        key="harkiran-lens-streamer",
+        key="unreal-core-streamer",
         video_frame_callback=process_video_frame,
         sendback_audio=False,
         media_stream_constraints={
             "video": {
-                "width": {"ideal": 800},
-                "height": {"ideal": 600},
+                "width": {"ideal": 1020},
+                "height": {"ideal": 680},
                 "facingMode": "user",
                 "frameRate": {"ideal": 30}
             },
@@ -362,19 +275,3 @@ with col_video:
         ),
         async_processing=True
     )
-
-with col_metrics:
-    st.markdown("#### 🔬 Studio Pipeline Telemetry")
-    st.metric(label="Filter Ingress Sync", value=f"Lens Mode: {st.session_state.active_lens.upper()}", delta="Thread Stable")
-    
-    st.info("💡 **Placement Engineering Note:** Filters route their computations asynchronously through the WebRTC frame hook array. This completely prevents UI layout lag and maintains a consistent, high frame rate capture output perfect for demonstration clips.")
-    
-    st.markdown("""
-    **Architecture Overview:**
-    *   **Interface Layer:** Snapchat Carousel layout build with dynamic conditional compilation rendering wrappers.
-    *   **Optimization Engine:** Safe tracking state variables mapped out of processing loops to bypass typical Streamlit multi-thread race drops.
-    *   **Native Rendering:** Fully utilizing vector math approximations to prevent pipeline freezes or third-party tracking runtime drops.
-    """)
-
-st.markdown("---")
-st.markdown("⚡ *Designed and optimized for professional technical review and recruitment portfolio validation.*")
