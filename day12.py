@@ -1,164 +1,176 @@
 import cv2
 import numpy as np
-import time
+import math
+import random
 
-def draw_portal_ring(img, center, radius, color_bgr):
-    """Draws a glowing, pulsing portal ring at a boundary."""
+def draw_animated_portal(img, center, rx, ry, primary_color, secondary_color, angle=0, frame_count=0):
+    """
+    Renders a multi-layered, animated vector portal with a swirling core and outer energy ring.
+    """
+    h, w, _ = img.shape
+    cx, cy = center
     overlay = img.copy()
-    
-    # Outer glow layers
-    for r in range(radius + 12, radius, -2):
-        cv2.circle(overlay, center, r, color_bgr, 2)
-    
-    # Core bright inner ring
-    cv2.circle(overlay, center, radius, (255, 255, 255), 3)
-    
-    # Alpha blend glow onto image
-    cv2.addWeighted(overlay, 0.45, img, 0.55, 0, img)
 
-def run_portal_system(video_source=0):
-    cap = cv2.VideoCapture(video_source)
-    if not cap.isOpened():
-        print("Error: Could not open video source.")
-        return
+    # --- 1. Inner Void (Dark Hole inside the portal) ---
+    num_points = 60
+    void_pts = []
+    for i in range(num_points):
+        theta = (2 * math.pi / num_points) * i
+        # Subtle organic wave pulse
+        wave = 4 * math.sin(theta * 5 + frame_count * 0.1)
+        curr_rx, curr_ry = rx + wave, ry + wave / 2
+        
+        x = cx + curr_rx * math.cos(theta) * math.cos(angle) - curr_ry * math.sin(theta) * math.sin(angle)
+        y = cy + curr_rx * math.cos(theta) * math.sin(angle) + curr_ry * math.sin(theta) * math.cos(angle)
+        void_pts.append([int(x), int(y)])
+        
+    pts_array = np.array(void_pts, np.int32).reshape((-1, 1, 2))
+    cv2.fillPoly(overlay, [pts_array], (12, 8, 20))  # Deep void fill
 
-    # Frame Dimensions
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    
-    # Define vertical 3-part grid boundaries
-    col1 = w // 3          # Boundary between Left and Center
-    col2 = (2 * w) // 3    # Boundary between Center and Right
+    # --- 2. Swirling Energy Trails (Sub-rings) ---
+    for ring_offset in range(3, 0, -1):
+        ring_pts = []
+        speed_factor = 0.15 * ring_offset
+        for i in range(num_points):
+            theta = (2 * math.pi / num_points) * i
+            wave = (6 * ring_offset) * math.sin(theta * (4 + ring_offset) + frame_count * speed_factor)
+            curr_rx = rx + wave + (ring_offset * 6)
+            curr_ry = ry + (wave / 2) + (ring_offset * 4)
 
-    # Target Portal Centers along the dividers
-    portal_left_center  = (col1, h // 2)
-    portal_right_center = (col2, h // 2)
+            x = cx + curr_rx * math.cos(theta) * math.cos(angle) - curr_ry * math.sin(theta) * math.sin(angle)
+            y = cy + curr_rx * math.cos(theta) * math.sin(angle) + curr_ry * math.sin(theta) * math.cos(angle)
+            ring_pts.append([int(x), int(y)])
 
-    # --- STAGE 1: BACKGROUND LEARNING ---
-    print("\n--- LEARNING BACKGROUND ---")
-    print("Please keep the scene clear of moving objects for 2 seconds...")
+        r_pts_array = np.array(ring_pts, np.int32).reshape((-1, 1, 2))
+        thickness = max(2, 6 - ring_offset)
+        cv2.polylines(overlay, [r_pts_array], isClosed=True, color=secondary_color, thickness=thickness, lineType=cv2.LINE_AA)
+
+    # --- 3. Outer Glowing Ring ---
+    cv2.polylines(overlay, [pts_array], isClosed=True, color=primary_color, thickness=12, lineType=cv2.LINE_AA)
     
-    bg_frames = []
-    start_time = time.time()
+    # --- 4. Bright White Core Edge ---
+    cv2.polylines(overlay, [pts_array], isClosed=True, color=(255, 255, 255), thickness=3, lineType=cv2.LINE_AA)
+
+    # Blend glow layers onto main canvas
+    cv2.addWeighted(overlay, 0.85, img, 0.15, 0, img)
+
+def create_starfield(w, h, num_stars=100):
+    """Generates static random star points for the space background."""
+    random.seed(42)  # Fixed seed so stars don't jitter randomly each frame
+    stars = []
+    for _ in range(num_stars):
+        x = random.randint(0, w - 1)
+        y = random.randint(0, h - 1)
+        radius = random.choice([1, 1, 2])
+        brightness = random.randint(180, 255)
+        stars.append((x, y, radius, brightness))
+    return stars
+
+def run_portal_studio():
+    # Canvas dimensions
+    w, h = 1280, 720
     
-    while time.time() - start_time < 2.0:
-        ret, frame = cap.read()
-        if not ret:
+    # Pre-generate background starfield
+    stars = create_starfield(w, h, num_stars=120)
+
+    # Interactive Portal Parameters
+    # Portal 1 (Left - Orange/Gold)
+    p1_pos = [int(w * 0.3), int(h * 0.5)]
+    p1_rx, p1_ry = 90, 140
+    p1_angle = math.radians(-15)
+    p1_primary = (30, 160, 255)     # Vibrant Orange (BGR)
+    p1_secondary = (100, 210, 255)  # Golden Yellow (BGR)
+
+    # Portal 2 (Right - Cyan/Blue)
+    p2_pos = [int(w * 0.7), int(h * 0.5)]
+    p2_rx, p2_ry = 85, 135
+    p2_angle = math.radians(15)
+    p2_primary = (255, 200, 50)     # Neon Blue (BGR)
+    p2_secondary = (255, 255, 120)  # Bright Cyan (BGR)
+
+    frame_count = 0
+    selected_portal = 1
+
+    print("=" * 60)
+    print("PORTAL STUDIO CONTROLS:")
+    print("  [1] / [2]  : Switch active portal control (Portal 1 vs 2)")
+    print("  [W][A][S][D]: Move selected portal position")
+    print("  [+] / [-]  : Scale portal size")
+    print("  [R]        : Rotate active portal")
+    print("  [Q] / [ESC]: Exit application")
+    print("=" * 60)
+
+    while True:
+        frame_count += 1
+
+        # 1. Base Space Background
+        canvas = np.zeros((h, w, 3), dtype=np.uint8)
+        canvas[:] = (30, 18, 12)  # Deep cosmic purple-blue background
+
+        # Draw stars
+        for sx, sy, srad, sbright in stars:
+            cv2.circle(canvas, (sx, sy), srad, (sbright, sbright, sbright), -1)
+
+        # 2. Render Portal 1 & Portal 2
+        draw_animated_portal(
+            canvas, tuple(p1_pos), p1_rx, p1_ry, 
+            p1_primary, p1_secondary, angle=p1_angle, frame_count=frame_count
+        )
+        
+        draw_animated_portal(
+            canvas, tuple(p2_pos), p2_rx, p2_ry, 
+            p2_primary, p2_secondary, angle=p2_angle, frame_count=frame_count
+        )
+
+        # 3. On-screen UI Labels
+        active_label = f"Active Control: PORTAL {selected_portal}"
+        cv2.putText(canvas, active_label, (30, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2, cv2.LINE_AA)
+        cv2.putText(canvas, "PORTAL 1 (ENTRANCE)", (p1_pos[0] - 110, p1_pos[1] - p1_ry - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, p1_primary, 2, cv2.LINE_AA)
+        cv2.putText(canvas, "PORTAL 2 (EXIT)", (p2_pos[0] - 80, p2_pos[1] - p2_ry - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, p2_primary, 2, cv2.LINE_AA)
+
+        # Draw selection indicator around active portal center
+        active_center = p1_pos if selected_portal == 1 else p2_pos
+        cv2.circle(canvas, tuple(active_center), 6, (255, 255, 255), -1, cv2.LINE_AA)
+
+        cv2.imshow("Live Portal Studio", canvas)
+
+        # Key Inputs
+        key = cv2.waitKey(16) & 0xFF  # ~60 FPS loop
+        if key in (27, ord('q')):
             break
+        elif key == ord('1'):
+            selected_portal = 1
+        elif key == ord('2'):
+            selected_portal = 2
         
-        bg_frames.append(frame.astype(np.float32))
-        
-        # Countdown overlay
-        remaining = max(0, 2.0 - (time.time() - start_time))
-        display_frame = frame.copy()
-        cv2.putText(display_frame, f"Learning Background... {remaining:.1f}s", 
-                    (30, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-        cv2.imshow("Portal Teleporter", display_frame)
-        cv2.waitKey(1)
+        # Position Adjustments (WASD)
+        elif key == ord('w'):
+            if selected_portal == 1: p1_pos[1] -= 8
+            else: p2_pos[1] -= 8
+        elif key == ord('s'):
+            if selected_portal == 1: p1_pos[1] += 8
+            else: p2_pos[1] += 8
+        elif key == ord('a'):
+            if selected_portal == 1: p1_pos[0] -= 8
+            else: p2_pos[0] -= 8
+        elif key == ord('d'):
+            if selected_portal == 1: p1_pos[0] += 8
+            else: p2_pos[0] += 8
 
-    # Compute static background model (median filter for noise resistance)
-    background = np.median(bg_frames, axis=0).astype(np.uint8)
-    bg_gray = cv2.cvtColor(background, cv2.COLOR_BGR2GRAY)
-    bg_gray = cv2.GaussianBlur(bg_gray, (21, 21), 0)
-    
-    print("Background learned successfully! Portals are now ACTIVE.\n")
+        # Scale Adjustments (+ / -)
+        elif key in (ord('+'), ord('=')):
+            if selected_portal == 1: p1_rx += 4; p1_ry += 6
+            else: p2_rx += 4; p2_ry += 6
+        elif key in (ord('-'), ord('_')):
+            if selected_portal == 1: p1_rx = max(20, p1_rx - 4); p1_ry = max(30, p1_ry - 6)
+            else: p2_rx = max(20, p2_rx - 4); p2_ry = max(30, p2_ry - 6)
 
-    # --- STAGE 2: REAL-TIME PORTAL TELEPORTATION ---
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        output = frame.copy()
-        
-        # 1. Isolate moving objects via Background Subtraction
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        gray = cv2.GaussianBlur(gray, (21, 21), 0)
-        
-        frame_diff = cv2.absdiff(bg_gray, gray)
-        _, motion_mask = cv2.threshold(frame_diff, 30, 255, cv2.THRESH_BINARY)
-        
-        # Clean up mask noise
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
-        motion_mask = cv2.morphologyEx(motion_mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-        motion_mask = cv2.dilate(motion_mask, kernel, iterations=1)
-
-        # 2. Detect Object Contours
-        contours, _ = cv2.findContours(motion_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        
-        for cnt in contours:
-            if cv2.contourArea(cnt) < 1200:  # Ignore small noise
-                continue
-
-            x, y, bw, bh = cv2.boundingRect(cnt)
-            obj_center_x = x + bw // 2
-
-            # Extract the isolated object using motion mask
-            obj_crop = frame[y:y+bh, x:x+bw]
-            mask_crop = motion_mask[y:y+bh, x:x+bw]
-
-            # Convert 1-channel mask to 3-channel normalized alpha matte
-            alpha = (mask_crop / 255.0)[:, :, np.newaxis]
-
-            # --- CASE A: Object enters RIGHT side -> Teleport to LEFT side ---
-            if obj_center_x > col2:
-                # Calculate corresponding position on Left panel
-                dest_x = max(0, x - col2)
-                dest_y = y
-                
-                if dest_x + bw <= col1 and dest_y + bh <= h:
-                    # 1. Clean original object out of Right side using learned background
-                    output[y:y+bh, x:x+bw] = (background[y:y+bh, x:x+bw] * alpha + 
-                                              output[y:y+bh, x:x+bw] * (1.0 - alpha)).astype(np.uint8)
-
-                    # 2. Paste isolated object onto Left side
-                    roi = output[dest_y:dest_y+bh, dest_x:dest_x+bw]
-                    blended = (obj_crop * alpha + roi * (1.0 - alpha)).astype(np.uint8)
-                    output[dest_y:dest_y+bh, dest_x:dest_x+bw] = blended
-
-            # --- CASE B: Object enters LEFT side -> Teleport to RIGHT side ---
-            elif obj_center_x < col1:
-                # Calculate corresponding position on Right panel
-                dest_x = min(w - bw, x + col2)
-                dest_y = y
-                
-                if dest_x >= col2 and dest_y + bh <= h:
-                    # 1. Clean original object out of Left side using learned background
-                    output[y:y+bh, x:x+bw] = (background[y:y+bh, x:x+bw] * alpha + 
-                                              output[y:y+bh, x:x+bw] * (1.0 - alpha)).astype(np.uint8)
-
-                    # 2. Paste isolated object onto Right side
-                    roi = output[dest_y:dest_y+bh, dest_x:dest_x+bw]
-                    blended = (obj_crop * alpha + roi * (1.0 - alpha)).astype(np.uint8)
-                    output[dest_y:dest_y+bh, dest_x:dest_x+bw] = blended
-
-        # 3. Draw 3-part Vertical Dividing Lines
-        cv2.line(output, (col1, 0), (col1, h), (100, 100, 100), 1, cv2.LINE_AA)
-        cv2.line(output, (col2, 0), (col2, h), (100, 100, 100), 1, cv2.LINE_AA)
-
-        # 4. Draw Glowing Portals along boundaries
-        # Portal 1 (Left Boundary) -> Orange (BGR: 0, 140, 255)
-        draw_portal_ring(output, portal_left_center, radius=65, color_bgr=(0, 140, 255))
-        
-        # Portal 2 (Right Boundary) -> Blue (BGR: 255, 165, 0)
-        draw_portal_ring(output, portal_right_center, radius=65, color_bgr=(255, 165, 0))
-
-        # Labels
-        cv2.putText(output, "PORTAL 1", (col1 - 100, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 140, 255), 2)
-        cv2.putText(output, "PORTAL 2", (col2 + 20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 165, 0), 2)
-
-        cv2.imshow("Portal Teleporter", output)
-
-        # Press 'q' or 'ESC' to exit, 'r' to relearn background
-        key = cv2.waitKey(1) & 0xFF
-        if key == 27 or key == ord('q'):
-            break
+        # Rotation (R)
         elif key == ord('r'):
-            return run_portal_system(video_source)
+            if selected_portal == 1: p1_angle += math.radians(10)
+            else: p2_angle += math.radians(10)
 
-    cap.release()
     cv2.destroyAllWindows()
 
 if __name__ == "__main__":
-    # Pass '0' for live webcam feed or a video file path (e.g. "sample.mp4")
-    run_portal_system(0)
+    run_portal_studio()
